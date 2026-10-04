@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/arisros/ytta/compare/v0.3.1...v0.4.0) (2026-10-04)
+
+
+### Added
+
+* **agent:** track Copilot CLI, Droid, Qwen Code, Kilo Code, Pi, Kimi Code and Hermes Agent ([#20](https://github.com/arisros/ytta/issues/20)) ([5787e24](https://github.com/arisros/ytta/commit/5787e24b44691d1683859be8f3f6898392846496))
+
 ## [0.3.1](https://github.com/arisros/ytta/compare/v0.3.0...v0.3.1) (2026-10-03)
 
 
