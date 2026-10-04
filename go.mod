@@ -3,7 +3,7 @@ module github.com/arisros/ytta
 go 1.26.0
 
 require (
-	github.com/arisros/fate v0.7.0
+	github.com/arisros/fate v0.10.0
 	golang.org/x/term v0.46.0
 )
 
