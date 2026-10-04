@@ -12,7 +12,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/arisros/fate"
+	fateaction "github.com/arisros/fate/action"
+	"github.com/arisros/fate/engine"
 )
 
 // States of an agent.
@@ -164,8 +165,8 @@ func (Focus) EventName() string { return "Focus" }
 func (Screen) EventName() string { return "Screen" }
 
 type (
-	tr     = fate.TransitionConfig[Ctx, Event]
-	action = fate.Action[Ctx, Event]
+	tr     = engine.TransitionConfig[Ctx, Event]
+	action = fateaction.Action[Ctx, Event]
 )
 
 func at(e Event) int64 {
@@ -196,7 +197,7 @@ func at(e Event) int64 {
 	return 0
 }
 
-var enter = fate.Named("since", fate.Assign(func(c Ctx, e Event) Ctx {
+var enter = fateaction.Named("since", fateaction.Assign(func(c Ctx, e Event) Ctx {
 	c.Since = at(e)
 	c.Reason, c.Tool = "", ""
 	switch e.(type) {
@@ -210,7 +211,7 @@ var enter = fate.Named("since", fate.Assign(func(c Ctx, e Event) Ctx {
 	return c
 }))
 
-var why = fate.Named("why", fate.Assign(func(c Ctx, e Event) Ctx {
+var why = fateaction.Named("why", fateaction.Assign(func(c Ctx, e Event) Ctx {
 	switch e := e.(type) {
 	case Permission:
 		c.Reason, c.Tool = e.Reason, e.Tool
@@ -222,7 +223,7 @@ var why = fate.Named("why", fate.Assign(func(c Ctx, e Event) Ctx {
 	return c
 }))
 
-var recordBackground = fate.Named("bg", fate.Assign(func(c Ctx, e Event) Ctx {
+var recordBackground = fateaction.Named("bg", fateaction.Assign(func(c Ctx, e Event) Ctx {
 	if s, ok := e.(Stop); ok {
 		c.Background = s.Background
 	}
@@ -261,10 +262,10 @@ func stopTransitions() []tr {
 // New builds the machine. Build it once per process; it is cheap enough that
 // a hook invocation can afford it (see the benchmark).
 func New() (*Machine, error) {
-	return fate.CreateMachine(fate.MachineConfig[Ctx, Event]{
+	return engine.CreateMachine(engine.MachineConfig[Ctx, Event]{
 		ID:      "agent",
 		Initial: Idle,
-		States: map[string]fate.StateNodeConfig[Ctx, Event]{
+		States: map[string]engine.StateNodeConfig[Ctx, Event]{
 			Idle: {On: map[string][]tr{
 				"Begin":      {to(Idle)},
 				"Prompt":     {to(Running)},
@@ -319,15 +320,15 @@ func (r Result) Entered(state string) bool { return r.To == state && r.From != s
 // Apply restores snapshot (nil starts fresh at idle), sends e, and returns
 // the new state with its persisted snapshot.
 func Apply(m *Machine, snapshot []byte, e Event) (Result, error) {
-	var a *fate.Actor[Ctx, Event]
+	var a *engine.Actor[Ctx, Event]
 	if snapshot == nil {
-		a = fate.NewActor(m)
+		a = engine.NewActor(m)
 		if err := a.Start(context.Background()); err != nil {
 			return Result{}, err
 		}
 	} else {
 		var err error
-		if a, err = fate.NewActorFromSnapshot[Ctx, Event](m, snapshot); err != nil {
+		if a, err = engine.NewActorFromSnapshot[Ctx, Event](m, snapshot); err != nil {
 			return Result{}, fmt.Errorf("restore snapshot: %w", err)
 		}
 	}
@@ -344,4 +345,4 @@ func Apply(m *Machine, snapshot []byte, e Event) (Result, error) {
 }
 
 // Machine is the compiled agent machine.
-type Machine = fate.Machine[Ctx, Event]
+type Machine = engine.Machine[Ctx, Event]
