@@ -54,7 +54,22 @@ setup:
                                        add the hooks to Gemini CLI's settings.json
   install --opencode [--apply] [--settings FILE]
                                        write the plugin that reports opencode's events
-  uninstall --claude|--codex|--gemini|--opencode [--apply] [--settings FILE]
+  install --copilot [--record] [--apply] [--settings FILE]
+                                       write ytta's hooks file into Copilot CLI's hooks directory
+  install --droid [--record] [--apply] [--settings FILE]
+                                       add the hooks to Droid's settings.json
+  install --qwen [--record] [--apply] [--settings FILE]
+                                       add the hooks to Qwen Code's settings.json
+  install --kilo [--apply] [--settings FILE]
+                                       write the plugin that reports Kilo Code's events
+  install --pi [--apply] [--settings FILE]
+                                       write the extension that reports Pi's events
+  install --kimi [--record] [--apply] [--settings FILE]
+                                       add the hooks to Kimi Code's config.toml
+  install --hermes [--record] [--apply] [--settings FILE]
+                                       add the hooks to Hermes Agent's config.yaml
+  uninstall --claude|--codex|--gemini|--opencode|--copilot|--droid|--qwen|--kilo|--pi|--kimi|--hermes
+            [--apply] [--settings FILE]
                                        remove every ytta hook, ytta's statusLine from Claude, or the plugin
   doctor                               check the installation
   tmux-init                            bind keys, set tmux hooks and formats (run by the tpm entrypoint)
@@ -62,7 +77,8 @@ setup:
   version, --version, -h, --help
 
 called by the agents and tmux, not by hand:
-  hook [--agent NAME] [--record]       apply a hook event read from stdin
+  hook [--agent NAME] [--event NAME] [--record]
+                                       apply a hook event read from stdin
   statusline                           record usage and plan limits, print Claude's status line
   usage                                record the usage another agent reports about a session, read from stdin
   focus <pane>                         the user looked at pane: a done agent becomes idle

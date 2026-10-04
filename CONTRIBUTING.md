@@ -50,7 +50,7 @@ Nothing else in the code knows which agent it is talking to.
    reader. An agent whose screen proves nothing gets none.
 3. Add an install target, a row in the README's agent table, and fixtures.
 
-Codex, Gemini CLI and opencode were added from their documentation and
+Codex, Gemini CLI, opencode, Copilot CLI, Droid, Qwen Code, Kilo Code CLI, Pi, Kimi Code CLI and Hermes Agent were added from their documentation and
 source before recordings existed. Recordings that confirm or correct them
 are the most useful contribution right now.
 

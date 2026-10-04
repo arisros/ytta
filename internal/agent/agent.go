@@ -29,7 +29,7 @@ type Agent struct {
 }
 
 // All lists the agents, Claude first: it is the default.
-var All = []Agent{Claude, Codex, Gemini, OpenCode}
+var All = []Agent{Claude, Codex, Gemini, OpenCode, Copilot, Droid, Qwen, Kilo, Pi, Kimi, Hermes}
 
 // For returns the agent called name; an empty name is Claude, whose hooks
 // were installed before agents had names.

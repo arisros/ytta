@@ -141,6 +141,150 @@ func TestOpenCodeMap(t *testing.T) {
 	}
 }
 
+func TestCopilotMap(t *testing.T) {
+	cases := []struct {
+		in     string
+		action hook.Action
+		want   machine.Event
+	}{
+		{`{"hook_event_name":"SessionStart","source":"resume"}`, hook.Begin, nil},
+		{`{"hook_event_name":"SessionEnd","reason":"user_exit"}`, hook.End, nil},
+		{`{"hook_event_name":"UserPromptSubmit","prompt":"x"}`, hook.Send, machine.Prompt{At: 7}},
+		{`{"hook_event_name":"PreToolUse","tool_name":"bash"}`, hook.Send, machine.ToolStart{At: 7}},
+		{`{"hook_event_name":"PostToolUse","tool_name":"bash"}`, hook.Send, machine.ToolEnd{At: 7}},
+		{`{"hook_event_name":"PostToolUseFailure","tool_name":"bash"}`, hook.Send, machine.ToolEnd{At: 7}},
+		{`{"hook_event_name":"PostToolUse","agent_id":"a1"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"Stop","stop_reason":"end_turn"}`, hook.Send, machine.Stop{At: 7}},
+		{`{"sessionId":"s","hook_event_name":"Notification","notification_type":"permission_prompt"}`, hook.Send, machine.NeedsInput{At: 7, Reason: machine.ReasonPermission}},
+		{`{"hook_event_name":"Notification","notification_type":"elicitation_dialog"}`, hook.Send, machine.NeedsInput{At: 7, Reason: machine.ReasonElicitation}},
+		{`{"hook_event_name":"Notification","notification_type":"agent_idle"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"Notification","notification_type":"shell_completed"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"PermissionRequest","tool_name":"bash"}`, hook.Ignore, nil},
+	}
+	for _, c := range cases {
+		if action, ev := mapped(t, Copilot, c.in); action != c.action || ev != c.want {
+			t.Errorf("%s: got %v %#v, want %v %#v", c.in, action, ev, c.action, c.want)
+		}
+	}
+}
+
+func TestDroidMap(t *testing.T) {
+	cases := []struct {
+		in     string
+		action hook.Action
+		want   machine.Event
+	}{
+		{`{"hook_event_name":"SessionStart","source":"startup"}`, hook.Begin, nil},
+		{`{"hook_event_name":"SessionStart","source":"compact"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"SessionEnd","reason":"prompt_input_exit"}`, hook.End, nil},
+		{`{"hook_event_name":"UserPromptSubmit","prompt":"x"}`, hook.Send, machine.Prompt{At: 7}},
+		{`{"hook_event_name":"PreToolUse","tool_name":"Execute"}`, hook.Send, machine.ToolStart{At: 7}},
+		{`{"hook_event_name":"PostToolUse","tool_name":"Execute"}`, hook.Send, machine.ToolEnd{At: 7}},
+		{`{"hook_event_name":"Stop","stop_hook_active":false}`, hook.Send, machine.Stop{At: 7}},
+		{`{"hook_event_name":"Notification","notification_type":"permission_prompt"}`, hook.Send, machine.NeedsInput{At: 7, Reason: machine.ReasonPermission}},
+		{`{"hook_event_name":"Notification","notification_type":"elicitation_dialog"}`, hook.Send, machine.NeedsInput{At: 7, Reason: machine.ReasonElicitation}},
+		{`{"hook_event_name":"Notification","notification_type":"idle_prompt"}`, hook.Send, machine.IdlePrompt{At: 7}},
+		{`{"hook_event_name":"Notification","notification_type":"auth_success"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"SubagentStop","task_name":"x"}`, hook.Ignore, nil},
+	}
+	for _, c := range cases {
+		if action, ev := mapped(t, Droid, c.in); action != c.action || ev != c.want {
+			t.Errorf("%s: got %v %#v, want %v %#v", c.in, action, ev, c.action, c.want)
+		}
+	}
+}
+
+func TestQwenMap(t *testing.T) {
+	cases := []struct {
+		in     string
+		action hook.Action
+		want   machine.Event
+	}{
+		{`{"hook_event_name":"SessionStart","source":"startup"}`, hook.Begin, nil},
+		{`{"hook_event_name":"SessionStart","source":"compact"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"SessionEnd"}`, hook.End, nil},
+		{`{"hook_event_name":"UserPromptSubmit","prompt":"x"}`, hook.Send, machine.Prompt{At: 7}},
+		{`{"hook_event_name":"PreToolUse","tool_name":"run_shell_command"}`, hook.Send, machine.ToolStart{At: 7}},
+		{`{"hook_event_name":"PostToolUse","agent_id":"a1"}`, hook.Send, machine.ToolEnd{At: 7, Subagent: true}},
+		{`{"hook_event_name":"PermissionRequest","tool_name":"run_shell_command"}`, hook.Send, machine.Permission{At: 7, Reason: machine.ReasonPermission, Tool: "run_shell_command"}},
+		{`{"hook_event_name":"Notification","notification_type":"permission_prompt"}`, hook.Send, machine.NeedsInput{At: 7, Reason: machine.ReasonPermission}},
+		{`{"hook_event_name":"Notification","notification_type":"idle_prompt"}`, hook.Send, machine.IdlePrompt{At: 7}},
+		{`{"hook_event_name":"Stop","background_tasks":[{"id":"x"}]}`, hook.Send, machine.Stop{At: 7, Background: 1}},
+		{`{"hook_event_name":"StopFailure","error":"rate_limit"}`, hook.Send, machine.Stop{At: 7}},
+		{`{"hook_event_name":"PermissionDenied","reason":"classifier_blocked"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"MessageDisplay"}`, hook.Ignore, nil},
+	}
+	for _, c := range cases {
+		if action, ev := mapped(t, Qwen, c.in); action != c.action || ev != c.want {
+			t.Errorf("%s: got %v %#v, want %v %#v", c.in, action, ev, c.action, c.want)
+		}
+	}
+}
+
+func TestKiloPlugin(t *testing.T) {
+	src := KiloPlugin()
+	for _, want := range []string{`"--agent", "kilo"`, "const Ytta = async", `export default { id: "ytta", server: Ytta }`, `const YTTA = "__YTTA__"`} {
+		if !strings.Contains(src, want) {
+			t.Errorf("plugin lacks %q", want)
+		}
+	}
+	for _, not := range []string{"export const Ytta", `"opencode"`} {
+		if strings.Contains(src, not) {
+			t.Errorf("plugin still has %q", not)
+		}
+	}
+}
+
+func TestKimiMap(t *testing.T) {
+	cases := []struct {
+		in     string
+		action hook.Action
+		want   machine.Event
+	}{
+		{`{"hook_event_name":"SessionStart","source":"resume"}`, hook.Begin, nil},
+		{`{"hook_event_name":"SessionEnd"}`, hook.End, nil},
+		{`{"hook_event_name":"UserPromptSubmit","prompt":"x"}`, hook.Send, machine.Prompt{At: 7}},
+		{`{"hook_event_name":"PreToolUse","tool_name":"Bash"}`, hook.Send, machine.ToolStart{At: 7}},
+		{`{"hook_event_name":"PermissionRequest","tool_name":"Bash"}`, hook.Send, machine.Permission{At: 7, Reason: machine.ReasonPermission, Tool: "Bash"}},
+		{`{"hook_event_name":"PermissionResult"}`, hook.Send, machine.ToolEnd{At: 7}},
+		{`{"hook_event_name":"Stop"}`, hook.Send, machine.Stop{At: 7}},
+		{`{"hook_event_name":"StopFailure"}`, hook.Send, machine.Stop{At: 7}},
+		{`{"hook_event_name":"Interrupt"}`, hook.Send, machine.Interrupt{At: 7}},
+		{`{"hook_event_name":"Notification"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"TurnStarted"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"SubagentStop"}`, hook.Ignore, nil},
+	}
+	for _, c := range cases {
+		if action, ev := mapped(t, Kimi, c.in); action != c.action || ev != c.want {
+			t.Errorf("%s: got %v %#v, want %v %#v", c.in, action, ev, c.action, c.want)
+		}
+	}
+}
+
+func TestHermesMap(t *testing.T) {
+	cases := []struct {
+		in     string
+		action hook.Action
+		want   machine.Event
+	}{
+		{`{"hook_event_name":"on_session_start","session_id":"s","tool_name":null}`, hook.Begin, nil},
+		{`{"hook_event_name":"on_session_finalize"}`, hook.End, nil},
+		{`{"hook_event_name":"pre_llm_call","extra":{"user_message":"x"}}`, hook.Send, machine.Prompt{At: 7}},
+		{`{"hook_event_name":"pre_tool_call","tool_name":"terminal","tool_input":{"command":"x"}}`, hook.Send, machine.ToolStart{At: 7}},
+		{`{"hook_event_name":"post_tool_call","tool_name":"terminal"}`, hook.Send, machine.ToolEnd{At: 7}},
+		{`{"hook_event_name":"pre_approval_request","tool_name":null,"session_id":null}`, hook.Send, machine.Permission{At: 7, Reason: machine.ReasonPermission}},
+		{`{"hook_event_name":"post_approval_response","extra":{"choice":"deny"}}`, hook.Send, machine.ToolEnd{At: 7}},
+		{`{"hook_event_name":"on_session_end","extra":{"interrupted":true}}`, hook.Send, machine.Stop{At: 7}},
+		{`{"hook_event_name":"post_llm_call"}`, hook.Ignore, nil},
+		{`{"hook_event_name":"subagent_stop"}`, hook.Ignore, nil},
+	}
+	for _, c := range cases {
+		if action, ev := mapped(t, Hermes, c.in); action != c.action || ev != c.want {
+			t.Errorf("%s: got %v %#v, want %v %#v", c.in, action, ev, c.action, c.want)
+		}
+	}
+}
+
 func TestScreenWithoutAClassifier(t *testing.T) {
 	if got := (Agent{Name: "quiet"}).Screen("anything"); got != "" {
 		t.Errorf("Screen = %q", got)

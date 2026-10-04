@@ -2,10 +2,14 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/arisros/ytta/internal/agent"
+	"github.com/arisros/ytta/internal/install"
 )
 
 func TestUsageListsEveryCommand(t *testing.T) {
@@ -178,5 +182,46 @@ func TestWriteWithBackupKeepsASymlink(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(target); string(b) != `{"n":1}` {
 		t.Errorf("target = %q, want the new content", b)
+	}
+}
+
+func TestCopilotHooksFile(t *testing.T) {
+	for _, record := range []bool{false, true} {
+		file := copilotHooks("/opt/ytta/bin/ytta", record)
+		var f struct {
+			Version int `json:"version"`
+			Hooks   map[string][]struct {
+				Type, Bash string
+				TimeoutSec int
+			} `json:"hooks"`
+		}
+		if err := json.Unmarshal(file, &f); err != nil {
+			t.Fatal(err)
+		}
+		if f.Version != 1 || len(f.Hooks) != len(agent.CopilotEvents) {
+			t.Fatalf("version %d, %d events", f.Version, len(f.Hooks))
+		}
+		want := "hook --agent copilot;"
+		if record {
+			want = "hook --record;"
+		}
+		for _, ev := range agent.CopilotEvents {
+			e := f.Hooks[ev]
+			if len(e) != 1 || !strings.Contains(e[0].Bash, want) || !strings.HasSuffix(e[0].Bash, "exit 0 # "+install.Marker) {
+				t.Errorf("%s: %+v", ev, e)
+			}
+		}
+		if strings.Contains(string(file), `\u0026`) {
+			t.Error("&& was escaped")
+		}
+		var copilot target
+		for _, tg := range targets {
+			if tg.name == "copilot" {
+				copilot = tg
+			}
+		}
+		if got := copilot.binary(string(file)); got != "/opt/ytta/bin/ytta" {
+			t.Errorf("binary = %q", got)
+		}
 	}
 }

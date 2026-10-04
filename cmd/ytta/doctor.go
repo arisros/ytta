@@ -105,20 +105,31 @@ func runDoctor(_ []string) error {
 	}
 
 	// Other agents are only reported once ytta is installed for them.
-	if hooksFile, err := os.ReadFile(codexHooksPath()); err == nil {
-		if events, _ := install.Owned(hooksFile); len(events) > 0 {
-			check(true, "Codex hooks", strconv.Itoa(len(events))+" events; they run only once trusted with /hooks in Codex")
+	for _, t := range targets[1:] {
+		file, err := os.ReadFile(t.path())
+		if err != nil {
+			continue
 		}
-	}
-
-	if settings, err := os.ReadFile(geminiSettingsPath()); err == nil {
-		if events, _ := install.Owned(settings); len(events) > 0 {
-			check(true, "Gemini CLI hooks", strconv.Itoa(len(events))+" events")
+		if t.plugin != nil {
+			if strings.Contains(string(file), install.Marker) {
+				_, statErr := os.Stat(t.binary(string(file)))
+				check(statErr == nil, t.title+" plugin", "installed; run ytta install --"+t.name+" --apply again if ytta has moved")
+			}
+			continue
 		}
-	}
-	if plugin, err := os.ReadFile(opencodePluginPath()); err == nil && strings.Contains(string(plugin), install.Marker) {
-		_, statErr := os.Stat(strings.Trim(between(string(plugin), `const YTTA = "`, `"`), " "))
-		check(statErr == nil, "opencode plugin", "installed; run ytta install --opencode --apply again if ytta has moved")
+		if t.block != nil {
+			if install.HasBlock(file) {
+				check(true, t.title+" hooks", "installed")
+			}
+			continue
+		}
+		if events, _ := install.Owned(file); len(events) > 0 {
+			detail := strconv.Itoa(len(events)) + " events"
+			if t.doctorNote != "" {
+				detail += "; " + t.doctorNote
+			}
+			check(true, t.title+" hooks", detail)
+		}
 	}
 
 	dir := store.DefaultDir()

@@ -6,7 +6,7 @@ What ytta set out to do, what is done, and what it will not become. The order wa
 
 | Question a new user asks | Answer today |
 |---|---|
-| Does it support my agent? | Claude Code, Codex, Gemini CLI and opencode. Only Claude Code's behaviour is replayed from recorded sessions |
+| Does it support my agent? | Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Droid, Qwen Code, Kilo Code CLI, Pi, Kimi Code CLI and Hermes Agent. Only Claude Code's behaviour is replayed from recorded sessions |
 | Does it work on my tmux? | 3.2 and newer, which covers Ubuntu 22.04 and RHEL 9. CI runs 3.2a, 3.3a and current |
 | Does it ever lie to me? | every state has a way out, endings no hook reports are read from the screen, agents that exited are cleared, and every state change is logged with its cause |
 | Does it save me a trip to the pane? | the reason an agent waits, its screen in the popup, answering and prompting from there, a notify command |
@@ -42,7 +42,7 @@ What ytta set out to do, what is done, and what it will not become. The order wa
 
 | What | Why it is open |
 |---|---|
-| Recorded sessions for Codex, Gemini CLI and opencode | their mappings were read from documentation and source. ytta's rule is that transitions come from recordings, and these three do not meet it yet |
+| Recorded sessions for Codex, Gemini CLI, opencode, Copilot CLI, Droid, Qwen Code, Kilo Code CLI, Pi, Kimi Code CLI and Hermes Agent | their mappings were read from documentation and source. ytta's rule is that transitions come from recordings, and these do not meet it yet |
 | What a denied approval looks like in Codex | no hook was found for it, and its screen has no end marker ytta has seen, so the agent may show as running until the next prompt |
 | Whether Gemini CLI's hooks see `TMUX_PANE` | its environment redaction may hide it; without it ytta cannot tell which pane the agent is in |
 | Claude Code fixtures for resume, compaction, a crash, a failed tool, an elicitation | they need real sessions to record |
@@ -64,6 +64,38 @@ Read from each project's source and documentation on 2026-10-02.
 | Background work at the end of a turn | reported by `Stop` | the screen says `background terminal running` | unknown | not found |
 | Process name tmux sees | its version number, or `claude` | `node` when installed from npm | not observed | `opencode`, or `node` from npm |
 | Usage for another program | statusLine JSON | none outside its transcript file | not checked | tokens and cost per message, summed by the plugin and sent through `ytta usage` |
+
+Agents added later are listed by row. Read from each project's documentation on 2026-10-04.
+
+| Agent | Mechanism | Waiting | A denied permission | Interrupt | Session end |
+|---|---|---|---|---|---|
+| Copilot CLI | ytta's own file in `~/.copilot/hooks/`, registered under the PascalCase names so payloads carry Claude Code's fields | `notification` of type `permission_prompt` or `elicitation_dialog`; `permissionRequest` is not used, it fires before the rules decide whether to ask | no event found | not documented | `SessionEnd` |
+| Droid | hooks in `~/.factory/settings.json`, Claude Code's shape and names | `Notification` of type `permission_prompt` or `elicitation_dialog` | no event found | a `Notification` in place of `Stop`, taken to be `idle_prompt` | `SessionEnd` |
+| Qwen Code | hooks in `~/.qwen/settings.json`, Claude Code's shape and names | `PermissionRequest`, `Notification` of type `permission_prompt`; a question has no event yet | `PermissionDenied` only for its own classifier, not for the user's answer | no event found | `SessionEnd` |
+| Kilo Code CLI | the opencode plugin in `~/.config/kilo/plugin/`, exported as `{ id, server }` | `permission.asked`; `question.asked` if Kilo publishes it as opencode does | `permission.replied` | `session.error`, then `session.idle` | none on exit; the pane's command changing ends it |
+| Pi | an extension file in `~/.pi/agent/extensions/` | none: Pi has no permission prompts | does not apply | `agent_end`, if Pi sends it for an aborted turn | `session_shutdown` |
+| Kimi Code CLI | `[[hooks]]` tables in `~/.kimi-code/config.toml` | `PermissionRequest` | `PermissionResult` | `Interrupt` | `SessionEnd` |
+| Hermes Agent | shell hooks under `hooks:` in `~/.hermes/config.yaml`, run without a shell and after a consent prompt | `pre_approval_request` | `post_approval_response` | `on_session_end`, which is the end of every turn and says whether it was interrupted | `on_session_finalize` |
+
+## Agents considered
+
+Read from each project's documentation on 2026-10-04. An agent is added only when its own hooks or plugins report every state it has, because a blocked agent shown as running is the lie ytta exists to prevent.
+
+| Agent | Decision | What is missing | What would change it |
+|---|---|---|---|
+| Cursor CLI | deferred | no permission hook, and its question tool skips the tool hooks | a permission or notification hook in the CLI |
+| Goose | deferred | no permission, question or idle event | an approval event in its hooks |
+| Kiro CLI | deferred | no permission or question trigger; a session end only on the opt-in V3 engine | an approval trigger, and V3 as the default |
+| Amp | deferred | its plugin API has no permission, question or session end event | those events in the plugin API |
+| Grok Build | deferred | `PermissionDenied` only after the fact | a permission request event, or a notification on the prompt |
+| Auggie | deferred | no prompt or permission event | both |
+| OpenHands CLI | deferred | no approval event, and hooks are configured per repository only | an approval event and a user level hooks file |
+| Mistral Vibe | deferred | three events: before a tool, after a tool, the end of a turn | session, prompt and approval events |
+| Devin CLI | deferred | the hooks file's place and the payload's event name were not found | published documentation of both |
+| Continue CLI | no target of its own | `cn` reads the hooks in `~/.claude/settings.json` as well as its own, and its payload does not say which program sent it. With ytta installed for Claude Code it is already tracked, shown as Claude; a second set of hooks would fire every event twice | a field in its payload naming the caller, or a way to keep it from reading Claude Code's settings |
+| Aider | declined | one command with no payload, run both when a turn ends and when it asks to confirm | hooks that tell the two apart |
+| Crush | declined | `PreToolUse` only, so a running agent could never leave that state | the rest of its planned hooks |
+| Cline CLI | declined | its plugins see no approval or question | an approval hook |
 
 ## tmux versions
 
