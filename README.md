@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-<p align="center"><b>your tmux terminal agent 😉</b>. An agent control plane for tmux: see which coding agents need you and why, answer them from where you are, and script them. Claude Code, Codex, Gemini CLI and opencode, across every session.</p>
+<p align="center"><b>your tmux terminal agent 😉</b>. An agent control plane for tmux: see which coding agents need you and why, answer them from where you are, and script them. Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Droid, Qwen Code, Kilo Code, Pi, Kimi Code and Hermes Agent, across every session.</p>
 
 <p align="center">
   <a href="https://github.com/arisros/ytta/actions/workflows/ci.yml"><img src="https://github.com/arisros/ytta/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -178,11 +178,26 @@ The sidebar keeps its place as the full-height left column: it follows you to ot
 | Codex CLI 0.124+ | `ytta install --codex --apply`, then `/hooks` in Codex to trust them | prompts, tools, permission requests, the end of a turn; a closed session from 0.145, Esc from 0.150 | dialogs and work in progress | no: Codex only writes them to its transcript, which ytta does not read |
 | Gemini CLI | `ytta install --gemini --apply`, then restart it | prompts, tools, permission prompts, the end of a turn | nothing | no |
 | opencode | `ytta install --opencode --apply`, then restart it | prompts, tools, permission requests and their answers, questions, an aborted turn, the end of a turn | nothing | tokens and cost, counted from when opencode started; no context or plan bars |
+| Copilot CLI | `ytta install --copilot --apply`, then restart it | prompts, tools, permission prompts, elicitations, the end of a turn, a closed session | nothing | no |
+| Droid | `ytta install --droid --apply`, then restart it | prompts, tools, permission prompts, elicitations, a cancelled turn, the end of a turn, a closed session | nothing | no |
+| Qwen Code | `ytta install --qwen --apply`, then restart it | prompts, tools, permission requests, the end of a turn and one an error ended, a closed session | nothing | no |
+| Kilo Code CLI | `ytta install --kilo --apply`, then restart it | what opencode reports: it carries opencode's plugin interface | nothing | tokens and cost, as for opencode |
+| Pi | `ytta install --pi --apply`, then `/reload` in it | prompts, tools, the end of a turn, a closed or switched session | nothing | no |
+| Kimi Code CLI | `ytta install --kimi --apply`, then restart it | prompts, tools, permission requests and their answers, Esc, the end of a turn and one an error ended, a closed session | nothing | no |
+| Hermes Agent | `ytta install --hermes --apply`, then restart it and accept the hooks | turns, tools, approval requests and their answers, the end of a turn (interrupted or not), a closed session | nothing | no |
 
-Only Claude Code's transitions are replayed from recorded sessions. The other three are built from each project's published hook or plugin interface and tested against that, so treat them as experimental until recordings exist:
+Only Claude Code's transitions are replayed from recorded sessions. The others are built from each project's published hook or plugin interface and tested against that, so treat them as experimental until recordings exist:
 
 - **Codex**: a denied approval may show as running until your next prompt.
 - **Gemini CLI**: its hooks may not see `TMUX_PANE` when its environment redaction is on; allow that variable in its settings if no agent shows up.
+- **Copilot CLI**: ytta writes its own `ytta.json` into `~/.copilot/hooks/`, beside any hooks files of yours. Nothing reports a denied permission or Esc, so either may show as waiting or running until the turn ends.
+- **Droid**: its hooks do not tell a sub-droid's tool calls from the main one's, and nothing reports a denied permission until the turn ends.
+- **Qwen Code**: nothing reports Esc or a denied permission, so either may show as running or waiting until your next prompt.
+- **Kilo Code CLI**: the opencode plugin, written to `~/.config/kilo/plugin/`. What is said of opencode below holds for it.
+- **Pi**: ytta writes an extension file into `~/.pi/agent/extensions/`. Pi asks no permissions, so it never shows as waiting; a prompt an extension of yours puts up is not reported.
+- **Kimi Code CLI**: ytta appends its `[[hooks]]` tables to `~/.kimi-code/config.toml` between two comment lines, and removes exactly those. A config that defines `hooks` as an inline array is refused.
+- **Hermes Agent**: ytta appends a `hooks:` key to `~/.hermes/config.yaml` between two comment lines. A config that already has one is refused, with the line to add by hand. Hermes asks for consent once per hook.
+- **Continue CLI**: `cn` reads Claude Code's settings, so the hooks `ytta install --claude` wrote already report it, shown as Claude. It has no install target of its own, which would fire every event twice.
 - **opencode**: ytta writes a plugin file into `~/.config/opencode/plugins/` that runs `ytta hook` for each event. It reports an opencode started in a tmux pane, not one reached with `opencode attach`. Closing opencode sends no event; the agent is forgotten when its pane changes.
 
 Each hook remembers the pane's foreground command, so an agent started through a wrapper (Codex from npm runs as `node`) is tracked and forgotten like any other.
@@ -267,7 +282,7 @@ flowchart LR
   cmd --> install[internal/install<br/>settings.json]
   ytta --> events[internal/events<br/>state change log]
   ytta --> machine[internal/machine<br/>fate statechart]
-  ytta --> agent[internal/agent<br/>Claude, Codex, Gemini, opencode]
+  ytta --> agent[internal/agent<br/>one value per agent]
   agent --> hook[internal/hook<br/>payload to event]
   ytta --> store[internal/store<br/>flock records]
   ytta --> tmux[internal/tmux]
@@ -287,8 +302,9 @@ Integration tests start their own `tmux -L ytta-test-*` servers and never touch 
 - [x] a command to run when an agent needs you
 - [x] tmux 3.2, tested in CI next to 3.3
 - [x] Codex, Gemini CLI and opencode
+- [x] Copilot CLI, Droid, Qwen Code, Kilo Code CLI, Pi, Kimi Code CLI and Hermes Agent, from their documentation
 - [x] a preview you can answer from, `ytta send`, `ytta wait`, `ytta events --follow`
-- [ ] recorded sessions for Codex, Gemini CLI and opencode, to replace what was read from their documentation
+- [ ] recorded sessions for Codex, Gemini CLI, opencode, Copilot CLI, Droid, Qwen Code, Kilo Code CLI, Pi, Kimi Code CLI and Hermes Agent, to replace what was read from their documentation
 - [ ] recordings of the Claude Code cases still missing: resume, compaction, a crash, a failed tool, an elicitation
 
 What is left, the rules every change keeps, what was declined and why, and the non-goals: [docs/roadmap.md](docs/roadmap.md).

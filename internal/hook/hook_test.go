@@ -51,6 +51,23 @@ func TestMap(t *testing.T) {
 	}
 }
 
+func TestDecodeReadsCamelCaseFields(t *testing.T) {
+	p, err := Decode(strings.NewReader(`{"hookEventName":"PreToolUse","sessionId":"s1","toolName":"Bash","toolInput":{"command":"x"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Event != "PreToolUse" || p.SessionID != "s1" || p.ToolName != "Bash" {
+		t.Errorf("got %+v", p)
+	}
+	p, err = Decode(strings.NewReader(`{"hook_event_name":"Stop","hookEventName":"x","session_id":"s2","sessionId":"y"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Event != "Stop" || p.SessionID != "s2" {
+		t.Errorf("snake_case must win, got %+v", p)
+	}
+}
+
 func TestDecodeRejectsGarbage(t *testing.T) {
 	if _, err := Decode(strings.NewReader("{")); err == nil {
 		t.Fatal("want error")

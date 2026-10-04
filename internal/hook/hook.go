@@ -33,11 +33,27 @@ type Payload struct {
 	Agent string `json:"-"`
 }
 
-// Decode reads one payload.
+// Decode reads one payload. Agents that spell the event, session and tool
+// fields in camelCase are read into the same three fields.
 func Decode(r io.Reader) (Payload, error) {
-	var p Payload
-	if err := json.NewDecoder(r).Decode(&p); err != nil {
+	var w struct {
+		Payload
+		Event     string `json:"hookEventName"`
+		SessionID string `json:"sessionId"`
+		ToolName  string `json:"toolName"`
+	}
+	if err := json.NewDecoder(r).Decode(&w); err != nil {
 		return Payload{}, fmt.Errorf("decode hook payload: %w", err)
+	}
+	p := w.Payload
+	if p.Event == "" {
+		p.Event = w.Event
+	}
+	if p.SessionID == "" {
+		p.SessionID = w.SessionID
+	}
+	if p.ToolName == "" {
+		p.ToolName = w.ToolName
 	}
 	return p, nil
 }

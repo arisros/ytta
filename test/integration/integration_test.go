@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -786,6 +787,148 @@ func TestGeminiAgent(t *testing.T) {
 	h.ytta("", "uninstall", "--gemini", "--apply", "--settings", settings)
 	if b, _ := os.ReadFile(settings); string(b) != original {
 		t.Errorf("uninstall did not restore the file:\n%s", b)
+	}
+}
+
+func TestHermesInstallOwnsOnlyItsBlock(t *testing.T) {
+	h := newHarness(t)
+	config := filepath.Join(t.TempDir(), "config.yaml")
+	original := "model: big\nplugins:\n  enabled: []\n"
+	if err := os.WriteFile(config, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.ytta("", "install", "--hermes", "--apply", "--settings", config)
+	b, _ := os.ReadFile(config)
+	if got := string(b); !strings.HasPrefix(got, original+"# ytta begin\nhooks:\n  on_session_start:\n    - command: \"") ||
+		strings.Count(got, "hook --agent hermes\"") != 8 || strings.Contains(got, "test -x") {
+		t.Fatalf("install wrote:\n%s", got)
+	}
+	h.ytta("", "uninstall", "--hermes", "--apply", "--settings", config)
+	if b, _ := os.ReadFile(config); string(b) != original {
+		t.Errorf("uninstall did not restore the file:\n%s", b)
+	}
+}
+
+func TestKimiInstallOwnsOnlyItsBlock(t *testing.T) {
+	h := newHarness(t)
+	config := filepath.Join(t.TempDir(), "config.toml")
+	original := "model = \"k2\"\n\n[[hooks]]\nevent = \"Stop\"\ncommand = \"say done\"\n"
+	if err := os.WriteFile(config, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.ytta("", "install", "--kimi", "--apply", "--settings", config)
+	b, _ := os.ReadFile(config)
+	if got := string(b); !strings.HasPrefix(got, original) || strings.Count(got, "hook --agent kimi") != 9 ||
+		!strings.Contains(got, "event = \"Interrupt\"") {
+		t.Fatalf("install wrote:\n%s", got)
+	}
+	h.ytta("", "uninstall", "--kimi", "--apply", "--settings", config)
+	if b, _ := os.ReadFile(config); string(b) != original {
+		t.Errorf("uninstall did not restore the file:\n%s", b)
+	}
+}
+
+// The Pi extension runs under node here, fed the events Pi would emit.
+func TestPiExtension(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available to run the Pi extension")
+	}
+	h := newHarness(t)
+	dir := t.TempDir()
+	ext := filepath.Join(dir, "extensions", "ytta.js")
+	h.ytta("", "install", "--pi", "--apply", "--settings", ext)
+	src, err := os.ReadFile(ext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := filepath.Join(dir, "ext.mjs")
+	if err := os.WriteFile(module, src, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := h.tmux("split-window", "-d", "-t", "alpha", "-P", "-F", "#{pane_id}", "sleep 100000")
+	h.eventually(func() bool { return h.opt(a, "pane_current_command") == "sleep" }, "Pi stand-in running")
+	run := func(body string) {
+		t.Helper()
+		driver := filepath.Join(dir, "driver.mjs")
+		script := `const m = await import(process.argv[2])
+const on = {}
+m.default({ on: (name, fn) => { on[name] = fn } })
+const tui = { mode: "tui", hasUI: true, sessionManager: { getSessionFile: () => "/home/someone/.pi/sessions/secret-project.jsonl" } }
+const print = { ...tui, mode: "print", hasUI: false }
+` + body
+		if err := os.WriteFile(driver, []byte(script), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(node, driver, module)
+		cmd.Env = h.env(a)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("extension failed: %v\n%s", err, out)
+		}
+	}
+	state := func() string { return h.opt(a, "@ytta_state") }
+
+	run(`await on.session_start({ reason: "startup" }, tui)
+await on.agent_start({}, tui)
+await on.tool_execution_start({ toolName: "bash" }, tui)
+// A print mode run sharing the pane must not end the turn.
+await on.agent_end({}, print)
+`)
+	h.eventually(func() bool { return state() == "running" }, "Pi running a tool")
+	if got := h.opt(a, "@ytta_agent"); got != "pi" {
+		t.Errorf("@ytta_agent = %q", got)
+	}
+	run(`await on.tool_execution_end({ toolName: "bash" }, tui)
+await on.agent_end({}, tui)
+`)
+	h.eventually(func() bool { return state() == "done" || state() == "idle" }, "Pi finished its turn")
+	if out := h.ytta("", "events", "--json"); strings.Contains(out, "secret-project") {
+		t.Errorf("the session file's path reached the event log:\n%s", out)
+	}
+	run(`await on.session_shutdown({ reason: "quit" }, tui)
+`)
+	h.eventually(func() bool { return state() == "" }, "Pi's session ended")
+}
+
+// Kilo loads the opencode plugin through a default export.
+func TestKiloPlugin(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available to run the Kilo plugin")
+	}
+	h := newHarness(t)
+	dir := t.TempDir()
+	plugin := filepath.Join(dir, "plugin", "ytta.js")
+	h.ytta("", "install", "--kilo", "--apply", "--settings", plugin)
+	src, err := os.ReadFile(plugin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := filepath.Join(dir, "plugin.mjs")
+	driver := filepath.Join(dir, "driver.mjs")
+	script := `const m = await import(process.argv[2])
+const hooks = await m.default.server({})
+await hooks.event({ event: { type: "session.created", properties: { sessionID: "ses_main", info: { id: "ses_main" } } } })
+await hooks["chat.message"]({ sessionID: "ses_main" })
+await hooks.event({ event: { type: "permission.asked", properties: { sessionID: "ses_main", permission: "bash" } } })
+`
+	if err := errors.Join(os.WriteFile(module, src, 0o600), os.WriteFile(driver, []byte(script), 0o600)); err != nil {
+		t.Fatal(err)
+	}
+	a := h.tmux("split-window", "-d", "-t", "alpha", "-P", "-F", "#{pane_id}", "sleep 100000")
+	h.eventually(func() bool { return h.opt(a, "pane_current_command") == "sleep" }, "Kilo stand-in running")
+	cmd := exec.Command(node, driver, module)
+	cmd.Env = h.env(a)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("plugin failed: %v\n%s", err, out)
+	}
+	h.eventually(func() bool { return h.opt(a, "@ytta_state") == "waiting" }, "Kilo waiting for a permission")
+	if got := h.opt(a, "@ytta_agent"); got != "kilo" {
+		t.Errorf("@ytta_agent = %q", got)
+	}
+	h.ytta("", "uninstall", "--kilo", "--apply", "--settings", plugin)
+	if _, err := os.Stat(plugin); !os.IsNotExist(err) {
+		t.Errorf("uninstall left the plugin: %v", err)
 	}
 }
 

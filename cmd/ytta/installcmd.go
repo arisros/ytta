@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -43,7 +46,7 @@ func runInstall(args []string, add bool) error {
 		}
 	}
 	if t == nil {
-		return errors.New("name the agent: --claude, --codex, --gemini or --opencode")
+		return errors.New("name the agent: " + targetFlags())
 	}
 	if *path == "" {
 		*path = t.path()
@@ -56,9 +59,13 @@ func runInstall(args []string, add bool) error {
 	}
 	var after []byte
 	if t.plugin != nil {
-		return installPlugin(t, *path, before, add, *apply)
+		return installPlugin(t, *path, before, add, *rec, *apply)
 	}
-	if add {
+	if t.block != nil {
+		if after, err = installBlock(t, before, add, *rec); err != nil {
+			return err
+		}
+	} else if add {
 		bin, err := selfPath()
 		if err != nil {
 			return err
@@ -137,14 +144,44 @@ type target struct {
 	async      bool // whether the agent's hooks take "async"
 	timeout    int  // in the agent's own unit
 	afterApply string
+	// doctorNote follows the event count in `ytta doctor`.
+	doctorNote string
 	// plugin, when set, makes the target a single file ytta owns whole
-	// instead of hook entries merged into the agent's settings.
-	plugin func(bin string) []byte
+	// instead of hook entries merged into the agent's settings. record asks
+	// for the recorder in place of the live hooks.
+	plugin func(bin string, record bool) []byte
+	// block, when set, makes the target a block of text ytta owns at the end
+	// of the agent's TOML or YAML config. rest is the file without that
+	// block, and args is what the binary is called with.
+	block func(rest, bin, args string) (string, error)
+	// binary finds the ytta path a plugin file calls, for `ytta doctor`.
+	binary func(file string) string
+}
+
+// installBlock adds or removes a target's block and returns the new file.
+func installBlock(t *target, before []byte, add, record bool) ([]byte, error) {
+	if !add {
+		return install.RemoveBlock(before), nil
+	}
+	bin, err := selfPath()
+	if err != nil {
+		return nil, err
+	}
+	args := "hook" + t.hookArgs
+	if record {
+		fmt.Printf("Note: the recorder replaces the live hooks; run install --%s again to return to them.\n", t.name)
+		args = "hook --record"
+	}
+	body, err := t.block(string(install.RemoveBlock(before)), bin, args)
+	if err != nil {
+		return nil, err
+	}
+	return install.AddBlock(before, body), nil
 }
 
 // installPlugin writes or removes a plugin file. ytta owns the whole
 // file, and never touches one it did not write.
-func installPlugin(t *target, path string, before []byte, add, apply bool) error {
+func installPlugin(t *target, path string, before []byte, add, record, apply bool) error {
 	if before != nil && !strings.Contains(string(before), install.Marker) {
 		return fmt.Errorf("%s is not ytta's plugin; move it away first", path)
 	}
@@ -154,7 +191,7 @@ func installPlugin(t *target, path string, before []byte, add, apply bool) error
 		if err != nil {
 			return err
 		}
-		after = t.plugin(bin)
+		after = t.plugin(bin, record)
 	}
 	if string(before) == string(after) {
 		fmt.Println("No change needed:", path)
@@ -191,14 +228,27 @@ func geminiSettingsPath() string {
 	return filepath.Join(home, ".gemini", "settings.json")
 }
 
-func opencodePluginPath() string {
+func opencodePluginPath() string { return configFile("opencode", "plugins", "ytta.js") }
+
+func kiloPluginPath() string { return configFile("kilo", "plugin", "ytta.js") }
+
+// configFile is a path under XDG_CONFIG_HOME, ~/.config when that is unset.
+func configFile(elem ...string) string {
 	base := os.Getenv("XDG_CONFIG_HOME")
 	if base == "" {
 		home, _ := os.UserHomeDir()
 		base = filepath.Join(home, ".config")
 	}
-	return filepath.Join(base, "opencode", "plugins", "ytta.js")
+	return filepath.Join(append([]string{base}, elem...)...)
 }
+
+// pluginSource fills a plugin's __YTTA__ with the binary's path.
+func pluginSource(src, bin string) []byte {
+	return []byte(strings.ReplaceAll(src, "__YTTA__", strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(bin)))
+}
+
+// pluginBinary is the path pluginSource filled in.
+func pluginBinary(file string) string { return strings.TrimSpace(between(file, `const YTTA = "`, `"`)) }
 
 var geminiEvents = []string{
 	"SessionStart", "SessionEnd", "BeforeAgent", "AfterAgent", "BeforeModel", "BeforeTool", "AfterTool", "Notification",
@@ -213,6 +263,7 @@ var targets = []target{
 	{
 		name: "codex", title: "Codex CLI", path: codexHooksPath, async: true, timeout: 5, hookArgs: " --agent codex",
 		events:     codexEvents,
+		doctorNote: "they run only once trusted with /hooks in Codex",
 		afterApply: "Codex runs a new hook only after you trust it: open Codex and run /hooks. A changed command needs trusting again.",
 	},
 	{
@@ -224,11 +275,144 @@ var targets = []target{
 	},
 	{
 		name: "opencode", title: "opencode", path: opencodePluginPath,
-		plugin: func(bin string) []byte {
-			return []byte(strings.ReplaceAll(agent.OpenCodePlugin, "__YTTA__", strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(bin)))
-		},
+		plugin:     func(bin string, _ bool) []byte { return pluginSource(agent.OpenCodePlugin, bin) },
+		binary:     pluginBinary,
 		afterApply: "Restart opencode to load the plugin. It reports sessions of an opencode started in a tmux pane, not ones reached with opencode attach.",
 	},
+	{
+		name: "copilot", title: "Copilot CLI", path: copilotHooksPath, plugin: copilotHooks,
+		binary: func(file string) string {
+			var f struct {
+				Hooks map[string][]struct {
+					Bash string `json:"bash"`
+				} `json:"hooks"`
+			}
+			if json.Unmarshal([]byte(file), &f) != nil {
+				return ""
+			}
+			for _, entries := range f.Hooks {
+				for _, e := range entries {
+					return guardedBinary(e.Bash)
+				}
+			}
+			return ""
+		},
+		afterApply: "Restart Copilot CLI to load the hooks.",
+	},
+	{
+		name: "droid", title: "Droid", path: homeFile(".factory", "settings.json"), timeout: 5, hookArgs: " --agent droid",
+		events:     func() ([]string, []string, string) { return agent.DroidEvents, agent.DroidEvents, "" },
+		afterApply: "Restart Droid to load the hooks.",
+	},
+	{
+		name: "qwen", title: "Qwen Code", path: homeFile(".qwen", "settings.json"), async: true, timeout: 5, hookArgs: " --agent qwen",
+		events:     func() ([]string, []string, string) { return agent.QwenEvents, agent.QwenEvents, "" },
+		afterApply: "Restart Qwen Code to load the hooks.",
+	},
+	{
+		name: "kilo", title: "Kilo Code", path: kiloPluginPath,
+		plugin:     func(bin string, _ bool) []byte { return pluginSource(agent.KiloPlugin(), bin) },
+		binary:     pluginBinary,
+		afterApply: "Restart Kilo Code to load the plugin.",
+	},
+	{
+		name: "pi", title: "Pi", path: homeFile(".pi", "agent", "extensions", "ytta.js"),
+		plugin:     func(bin string, _ bool) []byte { return pluginSource(agent.PiExtension, bin) },
+		binary:     pluginBinary,
+		afterApply: "Restart Pi, or run /reload in it, to load the extension.",
+	},
+	{
+		name: "kimi", title: "Kimi Code", path: homeFile(".kimi-code", "config.toml"), hookArgs: " --agent kimi",
+		block:      kimiBlock,
+		afterApply: "Restart Kimi Code to load the hooks.",
+	},
+	{
+		name: "hermes", title: "Hermes Agent", path: homeFile(".hermes", "config.yaml"), hookArgs: " --agent hermes",
+		block:      hermesBlock,
+		afterApply: "Restart Hermes Agent. It asks once per hook before running it: accept each, or start it with --accept-hooks.",
+	},
+}
+
+// An inline `hooks = [...]` cannot be followed by [[hooks]] tables.
+var tomlInlineHooks = regexp.MustCompile(`(?m)^\s*hooks\s*=`)
+
+// kimiBlock is one [[hooks]] table per event for Kimi Code's config.toml.
+func kimiBlock(rest, bin, args string) (string, error) {
+	if tomlInlineHooks.MatchString(rest) {
+		return "", errors.New("the config defines hooks as an inline array, which [[hooks]] tables cannot extend; rewrite it as [[hooks]] tables first")
+	}
+	quoted := `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(guarded(bin, args)) + `"`
+	var b strings.Builder
+	for _, ev := range agent.KimiEvents {
+		fmt.Fprintf(&b, "[[hooks]]\nevent = %q\ncommand = %s\ntimeout = 5\n\n", ev, quoted)
+	}
+	return b.String(), nil
+}
+
+var yamlHooksKey = regexp.MustCompile(`(?m)^hooks\s*:`)
+
+// hermesBlock is the hooks key of Hermes Agent's config.yaml. Hermes runs a
+// hook without a shell, so the command is the binary itself, unguarded: a
+// missing one is a warning in Hermes and nothing more.
+func hermesBlock(rest, bin, args string) (string, error) {
+	if yamlHooksKey.MatchString(rest) {
+		return "", errors.New("the config already has a hooks key, and YAML allows only one; add ytta's entries under it by hand, one per event: command " +
+			shellQuote(bin) + " " + args)
+	}
+	quoted := `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(shellQuote(bin)+" "+args) + `"`
+	var b strings.Builder
+	b.WriteString("hooks:\n")
+	for _, ev := range agent.HermesEvents {
+		fmt.Fprintf(&b, "  %s:\n    - command: %s\n      timeout: 5\n", ev, quoted)
+	}
+	return b.String(), nil
+}
+
+// homeFile is a path under the home directory, resolved when it is asked for.
+func homeFile(elem ...string) func() string {
+	return func() string {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(append([]string{home}, elem...)...)
+	}
+}
+
+func copilotHooksPath() string {
+	dir := os.Getenv("COPILOT_HOME")
+	if dir == "" {
+		home, _ := os.UserHomeDir()
+		dir = filepath.Join(home, ".copilot")
+	}
+	return filepath.Join(dir, "hooks", "ytta.json")
+}
+
+// copilotHooks is the hooks file ytta owns in Copilot CLI's hooks directory,
+// which Copilot merges with the user's own files there.
+func copilotHooks(bin string, record bool) []byte {
+	args := "hook --agent copilot"
+	if record {
+		args = "hook --record"
+	}
+	entry := []map[string]any{{"type": "command", "bash": guarded(bin, args), "timeoutSec": 5}}
+	hooks := map[string]any{}
+	for _, e := range agent.CopilotEvents {
+		hooks[e] = entry
+	}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(map[string]any{"version": 1, "hooks": hooks})
+	return b.Bytes()
+}
+
+// targetFlags lists the install flags: "--claude, --codex or --gemini".
+func targetFlags() string {
+	flags := make([]string, len(targets))
+	for i, t := range targets {
+		flags[i] = "--" + t.name
+	}
+	last := len(flags) - 1
+	return strings.Join(flags[:last], ", ") + " or " + flags[last]
 }
 
 func codexHooksPath() string {

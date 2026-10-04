@@ -41,6 +41,7 @@ func runHook(args []string, stdin io.Reader) error {
 	fs := flag.NewFlagSet("hook", flag.ContinueOnError)
 	rec := fs.Bool("record", false, "only record a redacted event")
 	name := fs.String("agent", "", "the agent sending the event (default claude)")
+	event := fs.String("event", "", "the event's name, for an agent whose payload does not carry it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -49,12 +50,18 @@ func runHook(args []string, stdin io.Reader) error {
 	if *rec {
 		var e record.Entry
 		if e, err = record.FromHook(stdin, pane, time.Now()); err == nil {
+			if e.Event == "" {
+				e.Event = *event
+			}
 			err = record.Append(record.DefaultDir(), e)
 		}
 	} else {
 		var p hook.Payload
 		if p, err = hook.Decode(stdin); err == nil {
 			p.Agent = *name
+			if p.Event == "" {
+				p.Event = *event
+			}
 			var d *ytta.Ytta
 			if d, _, err = newYtta(); err == nil {
 				err = d.Hook(p, pane)
