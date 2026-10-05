@@ -15,7 +15,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
 </p>
 
-![The sidebar follows windows while two Claude agents work, finish and wait](https://raw.githubusercontent.com/arisros/ytta/main/docs/img/demo.gif)
+![The sidebar and agent picker track Claude, Codex and opencode sessions as they work, finish and wait](https://raw.githubusercontent.com/arisros/ytta/main/docs/img/demo.gif)
 <sub>Two agents on a side project, the sidebar on the left. The home directory path is blurred, nothing else.</sub>
 
 ## Quickstart
