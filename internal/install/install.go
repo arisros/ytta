@@ -19,6 +19,18 @@ import (
 // Marker identifies hook commands owned by this plugin.
 const Marker = "ytta"
 
+// LegacyMarker is the marker from before the rename to ytta. Its entries call
+// a binary that no longer exists, so they are removed wherever ytta's are.
+const LegacyMarker = "tmux-agent-deck"
+
+func owned(s string) bool {
+	return strings.Contains(s, Marker) || strings.Contains(s, LegacyMarker)
+}
+
+// HasLegacy reports whether settings still carry hooks or a statusLine from
+// before the rename.
+func HasLegacy(settings []byte) bool { return bytes.Contains(settings, []byte(LegacyMarker)) }
+
 // Hook describes the command registered on each event.
 type Hook struct {
 	Command string
@@ -200,7 +212,7 @@ func withoutYtta(groupRaw json.RawMessage) (json.RawMessage, bool, error) {
 		if err := json.Unmarshal(e, &c); err != nil {
 			return nil, false, err
 		}
-		if !strings.Contains(c.Command, Marker) {
+		if !owned(c.Command) {
 			kept = append(kept, e)
 		}
 	}
@@ -316,6 +328,14 @@ func SetStatusLine(settings []byte, command string) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	if raw, ok := root.get("statusLine"); ok && bytes.Contains(raw, []byte(LegacyMarker)) {
+		if settings, err = RemoveStatusLine(settings); err != nil {
+			return nil, false, err
+		}
+		if root, err = parseObject(settings); err != nil {
+			return nil, false, err
+		}
+	}
 	if raw, ok := root.get("statusLine"); ok && !bytes.Contains(raw, []byte(Marker)) {
 		out, err := format(root.raw())
 		return out, false, err
@@ -393,7 +413,7 @@ func RemoveStatusLine(settings []byte) ([]byte, error) {
 			}
 		}
 	}
-	if raw, ok := root.get("statusLine"); ok && bytes.Contains(raw, []byte(Marker)) {
+	if raw, ok := root.get("statusLine"); ok && owned(string(raw)) {
 		kept := object{}
 		for _, m := range root {
 			if m.Key != "statusLine" {
