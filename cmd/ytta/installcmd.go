@@ -61,6 +61,9 @@ func runInstall(args []string, add bool) error {
 	if t.plugin != nil {
 		return installPlugin(t, *path, before, add, *rec, *apply)
 	}
+	if t.block == nil && install.HasLegacy(before) {
+		fmt.Println("Note: removing the entries " + install.LegacyMarker + " left behind; their binary is gone.")
+	}
 	if t.block != nil {
 		if after, err = installBlock(t, before, add, *rec); err != nil {
 			return err

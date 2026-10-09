@@ -90,6 +90,8 @@ func runDoctor(_ []string) error {
 		}
 		_ = json.Unmarshal(settings, &parsed)
 		switch {
+		case parsed.StatusLine != nil && strings.Contains(parsed.StatusLine.Command, install.LegacyMarker):
+			check(false, "statusLine", "it calls "+install.LegacyMarker+", which is gone, so token usage and plan limits are not shown; run ytta install --claude --apply")
 		case parsed.StatusLine != nil && strings.Contains(parsed.StatusLine.Command, install.WrapFlag):
 			check(true, "statusLine", "yours is shown, and ytta records token usage and plan limits from it")
 		case parsed.StatusLine != nil && strings.Contains(parsed.StatusLine.Command, install.Marker):
@@ -98,6 +100,9 @@ func runDoctor(_ []string) error {
 			check(true, "statusLine", "yours is kept, so token usage and plan limits are not shown; ytta install --claude --wrap-statusline --apply keeps yours and records them")
 		default:
 			check(false, "statusLine", "not set; ytta install --claude --apply adds it for usage and plan limits")
+		}
+		if install.HasLegacy(settings) {
+			check(false, "no "+install.LegacyMarker+" entries", "hooks or a statusLine from before the rename to ytta do nothing; run ytta install --claude --apply")
 		}
 		if strings.Contains(string(settings), "window-status-style") {
 			check(false, "no old tab coloring hooks", "a hook still sets window-status-style and will fight ytta's icons")

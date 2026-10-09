@@ -228,3 +228,38 @@ func TestCommandsListsOnlyYttaEntries(t *testing.T) {
 		t.Errorf("foreign hooks reported as ytta's: %q", got)
 	}
 }
+
+const legacy = `test -x /p/tmux-agent-deck/bin/deck && /p/tmux-agent-deck/bin/deck %s; exit 0 # tmux-agent-deck`
+
+func TestAddReplacesLegacyEntries(t *testing.T) {
+	old := `{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"afplay x"}]},` +
+		`{"hooks":[{"type":"command","command":"` + strings.Replace(legacy, "%s", "hook", 1) + `"}]}],` +
+		`"PreCompact":[{"hooks":[{"type":"command","command":"` + strings.Replace(legacy, "%s", "hook", 1) + `"}]}]},` +
+		`"statusLine":{"type":"command","command":"` + strings.Replace(legacy, "%s", "statusline", 1) + `"}}`
+	if !HasLegacy([]byte(old)) {
+		t.Fatal("legacy entries not found")
+	}
+	out, err := Add([]byte(old), []string{"Stop"}, ytta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, owned, err := SetStatusLine(out, "/p/ytta/bin/ytta statusline # ytta")
+	if err != nil || !owned {
+		t.Fatalf("legacy statusLine kept as the user's own: %v %v", owned, err)
+	}
+	if HasLegacy(out) || strings.Contains(string(out), "PreCompact") || !strings.Contains(string(out), "afplay x") {
+		t.Errorf("after install:\n%s", out)
+	}
+	if events, _ := Owned([]byte(old)); len(events) != 0 {
+		t.Errorf("legacy hooks counted as installed: %q", events)
+	}
+}
+
+func TestLegacyWrappedStatusLineGivesTheUsersLineBack(t *testing.T) {
+	b64 := "fi9iaW4vbXktbGluZQ==" // ~/bin/my-line
+	old := `{"statusLine":{"type":"command","command":"/p/deck statusline ` + WrapFlag + ` ` + b64 + ` # tmux-agent-deck"}}`
+	out, owned, err := SetStatusLine([]byte(old), "/p/ytta/bin/ytta statusline # ytta")
+	if err != nil || owned || HasLegacy(out) || !strings.Contains(string(out), "~/bin/my-line") {
+		t.Errorf("owned %v, err %v:\n%s", owned, err, out)
+	}
+}
