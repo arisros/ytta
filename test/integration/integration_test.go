@@ -270,6 +270,37 @@ func TestPopupListsAndJumps(t *testing.T) {
 	h.eventually(func() bool { return h.opt("alpha", "pane_id") == a }, "jump to the agent")
 }
 
+// A click arrives as an SGR mouse report, the form tmux forwards once the
+// view has asked for mouse events.
+func TestPopupClickJumps(t *testing.T) {
+	h := newHarness(t)
+	first := h.opt("alpha", "pane_id")
+	a := h.agent("alpha")
+	h.hook(a, "UserPromptSubmit", "")
+	h.hook(a, "PermissionRequest", "")
+	h.tmux("select-pane", "-t", first)
+
+	h.tmux("set-environment", "-g", "YTTA_TMUX_SOCKET", h.socket)
+	popup := h.tmux("new-window", "-d", "-P", "-F", "#{pane_id}", h.bin+" popup")
+	row := -1
+	h.eventually(func() bool {
+		for i, line := range strings.Split(h.tmux("capture-pane", "-p", "-t", popup), "\n") {
+			if strings.Contains(line, "alpha:0.") {
+				row = i
+			}
+		}
+		return row >= 0
+	}, "popup lists the waiting agent")
+
+	h.tmux("send-keys", "-t", popup, "-l", "\x1b[<0;10;1M\x1b[<0;10;1m")
+	time.Sleep(200 * time.Millisecond)
+	if got := h.opt("alpha", "pane_id"); got != first {
+		t.Fatalf("a click on the header moved to %s", got)
+	}
+	h.tmux("send-keys", "-t", popup, "-l", fmt.Sprintf("\x1b[<0;10;%dM\x1b[<0;10;%dm", row+1, row+1))
+	h.eventually(func() bool { return h.opt("alpha", "pane_id") == a }, "click jumps to the agent")
+}
+
 // A sticky pane (dotfiles' sticky-pane.sh) and the sidebar both join the left
 // edge when the window changes. The sticky hook sits in slot 0 and runs
 // first; the sidebar's follow runs after it and must end up leftmost, with the

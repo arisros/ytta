@@ -17,6 +17,8 @@ import (
 type Key struct {
 	Rune rune
 	Name string // "up", "down", "enter", "esc", "backspace", "ctrl-c"; "" for a rune
+	// X and Y are the cell of a "click", counted from 0 at the top left.
+	X, Y int
 }
 
 // Term is a raw-mode terminal drawn in full on every frame.
@@ -42,7 +44,7 @@ func OpenTerm() (*Term, error) {
 	if err != nil {
 		return nil, err
 	}
-	// SGR mouse reporting, so tmux hands the view wheel events.
+	// SGR mouse reporting, so tmux hands the view wheel events and clicks.
 	write("\x1b[?1049h\x1b[?25l\x1b[?1000h\x1b[?1006h")
 	return &Term{fd: fd, state: st}, nil
 }
@@ -223,17 +225,23 @@ func Watch(ctx context.Context, flags []string, channel string) <-chan struct{} 
 	return ch
 }
 
-// mouse turns SGR mouse reports ("\x1b[<64;x;yM") into wheel keys. Clicks
-// are left to tmux, which focuses the pane.
+// mouse turns SGR mouse reports ("\x1b[<64;x;yM") into wheel keys and left
+// clicks. A click also reaches tmux, which focuses the pane; the release
+// ("m") and the other buttons mean nothing here.
 func mouse(s string) []Key {
 	var keys []Key
 	for _, ev := range strings.Split(s, "\x1b[<")[1:] {
-		button, _, _ := strings.Cut(ev, ";")
+		button, at, _ := strings.Cut(ev, ";")
 		switch button {
 		case "64":
 			keys = append(keys, Key{Name: "wheelup"})
 		case "65":
 			keys = append(keys, Key{Name: "wheeldown"})
+		case "0":
+			var x, y int
+			if n, _ := fmt.Sscanf(at, "%d;%dM", &x, &y); n == 2 && strings.HasSuffix(at, "M") && x > 0 && y > 0 {
+				keys = append(keys, Key{Name: "click", X: x - 1, Y: y - 1})
+			}
 		}
 	}
 	return keys

@@ -67,6 +67,9 @@ type List struct {
 	// pane switch take over again.
 	scrolled    bool
 	lastCurrent string
+	// hit maps a screen line of the last frame to the visible row drawn on
+	// it, which is what a click lands on.
+	hit map[int]int
 	// Limits is the plan's usage, when Claude has reported it.
 	Limits *usage.Limits
 	// Now is the clock the views render ages and resets against.
@@ -142,8 +145,8 @@ func (l *List) previewing() bool {
 	return ok && l.PreviewOf != "" && r.ID == l.PreviewOf
 }
 
-// Handle applies a key: vim motions and arrows, "/" to filter, enter to jump,
-// and the actions on the agent under the cursor.
+// Handle applies a key: vim motions and arrows, "/" to filter, enter or a
+// click to jump, and the actions on the agent under the cursor.
 func (l *List) Handle(k Key) Outcome {
 	switch k.Name {
 	case "wheelup", "wheeldown":
@@ -156,6 +159,13 @@ func (l *List) Handle(k Key) Outcome {
 		l.scrolled = true
 		l.clamp(len(l.Visible()))
 		return Stay
+	case "click":
+		i, ok := l.hit[k.Y]
+		if !ok || l.Confirming || l.Composing || l.Renaming || l.Filtering {
+			return Stay
+		}
+		l.Cursor, l.scrolled, l.Note = i, false, ""
+		return Jump
 	}
 	l.scrolled = false
 	l.Note = ""
@@ -304,7 +314,9 @@ func Popup(l *List, w, h int) []string {
 	if cur := l.clamp(len(rows)); cur >= body {
 		start = cur - body + 1
 	}
+	l.hit = map[int]int{}
 	for i := start; i < len(rows) && i < start+body; i++ {
+		l.hit[len(lines)] = i
 		r := rows[i]
 		st := StyleOf(r.State)
 		name := r.Name
@@ -393,7 +405,9 @@ func Sidebar(l *List, others []Row, session string, focused bool, w, h int) []st
 	if first > 0 {
 		lines = append(lines, dim+Fit(fmt.Sprintf("  ↑ %d more", first), w)+reset)
 	}
+	l.hit = map[int]int{}
 	for i := first; i < last; i++ {
+		l.hit[len(lines)], l.hit[len(lines)+1] = i, i
 		r := rows[i]
 		st := StyleOf(r.State)
 		label := r.Name

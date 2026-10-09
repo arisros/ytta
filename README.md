@@ -140,7 +140,7 @@ The screen is only trusted for Claude's explicit markers (its dialogs, the spinn
 | `g` `G` | top, bottom | top, bottom |
 | `/` | filter | filter |
 | `a` | only the agents that need you (waiting, done) | the same |
-| Enter, `l`, → | jump to the agent, across sessions | jump to the agent |
+| Enter, `l`, →, click on an agent | jump to the agent, across sessions | jump to the agent; a click works even when unfocused |
 | `p`, text, Enter | send a prompt to the agent | the same |
 | `1` to `9` | press that key in a waiting agent's dialog, while its screen is shown | |
 | `i` then `y` | interrupt the agent's turn (Esc) | the same |
