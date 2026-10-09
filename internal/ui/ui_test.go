@@ -238,8 +238,92 @@ func TestMouseWheelScrolls(t *testing.T) {
 	if got := decode([]byte("\x1b[<64;1;1M")); len(got) != 1 || got[0].Name != "wheelup" {
 		t.Errorf("wheel up decoded to %v", got)
 	}
-	if got := decode([]byte("\x1b[<0;3;4M")); len(got) != 0 {
+}
+
+func TestMouseClickDecodes(t *testing.T) {
+	if got := decode([]byte("\x1b[<0;3;4M")); len(got) != 1 || got[0] != (Key{Name: "click", X: 2, Y: 3}) {
 		t.Errorf("click decoded to %v", got)
+	}
+	for _, seq := range []string{"\x1b[<0;3;4m", "\x1b[<2;3;4M", "\x1b[<1;3;4M", "\x1b[<0;3M"} {
+		if got := decode([]byte(seq)); len(got) != 0 {
+			t.Errorf("%q decoded to %v", seq, got)
+		}
+	}
+}
+
+func clickList(n int) *List {
+	var panes []tmux.Pane
+	for i := 0; i < n; i++ {
+		panes = append(panes, pane(fmt.Sprintf("%%%d", i), "s", "1", "idle", "2.1.284", fmt.Sprintf("✳ agent %02d", i), 0))
+	}
+	return &List{All: Agents(panes, now), Current: "%0"}
+}
+
+// lineOf is the first screen line that shows text.
+func lineOf(t *testing.T, lines []string, text string) int {
+	t.Helper()
+	for i, line := range lines {
+		if strings.Contains(line, text) {
+			return i
+		}
+	}
+	t.Fatalf("%q is not on screen:\n%s", text, strings.Join(lines, "\n"))
+	return -1
+}
+
+func TestClickJumpsToTheRowUnderIt(t *testing.T) {
+	l := clickList(20)
+	Sidebar(l, nil, "s", false, 34, 16)
+	for i := 0; i < 8; i++ {
+		l.Handle(Key{Name: "wheeldown"})
+	}
+	view := Sidebar(l, nil, "s", false, 34, 16)
+	for _, second := range []int{0, 1} { // a sidebar row is two lines tall
+		l.Cursor = 0
+		y := lineOf(t, view, "agent 09") + second
+		if o := l.Handle(Key{Name: "click", X: 5, Y: y}); o != Jump {
+			t.Fatalf("click on line %d gave %v, not a jump", y, o)
+		}
+		if r, _ := l.Selected(); r.Name != "agent 09" {
+			t.Errorf("click on line %d picked %q", y, r.Name)
+		}
+	}
+
+	l = clickList(5)
+	view = Popup(l, 120, 30)
+	if o := l.Handle(Key{Name: "click", Y: lineOf(t, view, "agent 03")}); o != Jump {
+		t.Fatalf("click in the popup gave %v, not a jump", o)
+	}
+	if r, _ := l.Selected(); r.Name != "agent 03" {
+		t.Errorf("click in the popup picked %q", r.Name)
+	}
+}
+
+func TestClickOffARowDoesNothing(t *testing.T) {
+	l := clickList(20)
+	view := Sidebar(l, nil, "s", true, 34, 16)
+	l.Cursor = 2
+	for _, y := range []int{0, 1, lineOf(t, view, "more"), len(view) - 1, 99} {
+		if o := l.Handle(Key{Name: "click", Y: y}); o != Stay || l.Cursor != 2 {
+			t.Errorf("click on line %d: outcome %v, cursor %d", y, o, l.Cursor)
+		}
+	}
+}
+
+// A click must not confirm a kill, end a draft or leave a filter.
+func TestClickLeavesAPendingInputAlone(t *testing.T) {
+	for name, key := range map[string]Key{"confirm": {Rune: 'x'}, "prompt": {Rune: 'p'}, "rename": {Rune: 'r'}, "filter": {Rune: '/'}} {
+		l := clickList(5)
+		view := Sidebar(l, nil, "s", true, 34, 30)
+		l.Handle(key)
+		before := *l
+		if o := l.Handle(Key{Name: "click", Y: lineOf(t, view, "agent 03")}); o != Stay {
+			t.Errorf("%s: click gave %v", name, o)
+		}
+		if l.Cursor != before.Cursor || l.Confirming != before.Confirming || l.Composing != before.Composing ||
+			l.Renaming != before.Renaming || l.Filtering != before.Filtering {
+			t.Errorf("%s: click changed the pending input", name)
+		}
 	}
 }
 
