@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/arisros/ytta/compare/v0.4.0...v0.5.0) (2026-10-09)
+
+
+### Added
+
+* **ui:** jump to an agent by clicking its row ([#25](https://github.com/arisros/ytta/issues/25)) ([04384cc](https://github.com/arisros/ytta/commit/04384ccd012e82ba608d832bcffa1c30d8a63e3a))
+
 ## [0.4.0](https://github.com/arisros/ytta/compare/v0.3.1...v0.4.0) (2026-10-04)
 
 
