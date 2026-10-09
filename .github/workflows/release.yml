@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     branches: [main]
+  # Repeats a run that failed, without needing a new commit on main.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -10,6 +12,7 @@ permissions:
 jobs:
   release-please:
     name: release PR and tag
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       actions: write
