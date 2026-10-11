@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/arisros/ytta/compare/v0.5.0...v0.5.1) (2026-10-09)
+
+
+### Fixed
+
+* **install:** remove the entries tmux-agent-deck left behind ([#28](https://github.com/arisros/ytta/issues/28)) ([83f3720](https://github.com/arisros/ytta/commit/83f37209fae1c1fb4a7c50b9c41add7effe623b1))
+
 ## [0.5.0](https://github.com/arisros/ytta/compare/v0.4.0...v0.5.0) (2026-10-09)
 
 
