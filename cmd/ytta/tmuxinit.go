@@ -50,10 +50,10 @@ func windowIconFormat(running string) string {
 }
 
 // sidebarFollowCommands moves the sidebar into the window the session now
-// shows. It is stored in @ytta_follow and run with run-shell -C, which
-// expands it once in the new window before any command runs:
-// #{@ytta_sidebar_window} is still the window being left, and ##-escaped
-// formats are expanded later, by set-option -F or the inner run-shell.
+// shows. It is stored in @ytta_follow and expanded once in the new window
+// before any command runs (see followHook): #{@ytta_sidebar_window} is still
+// the window being left, and ##-escaped formats are expanded later, by
+// set-option -F.
 //
 // tmux hands a leaving pane's columns to its neighbour but takes a joining
 // full-height pane's columns from the far edge, so plain joins shift width
@@ -75,10 +75,26 @@ const sidebarFollowCommands = `set-option -w -t #{window_id} @ytta_restore ` +
 	`join-pane -d -f -h -b -l #{@ytta-sidebar-width} -s #{@ytta_sidebar_pane} -t #{window_id}.#{pane-base-index} ; ` +
 	`set-option -w -F -t #{window_id} @ytta_layout_joined "##{window_layout}" ; ` +
 	`swap-pane -s #{@ytta_sidebar_pane} -t #{window_id}.#{pane-base-index} ; ` +
-	`run-shell -t #{window_id} -C "select-layout -t #{window_id} ` +
+	`set-option -s -F -t #{window_id} ` + relayoutAlias + ` "ytta-relayout=select-layout -t #{window_id} ` +
 	`'##{?##{@ytta_restore},##{@ytta_layout_with},##{@ytta_layout_joined}}'" ; ` +
+	`if-shell -F 1 ytta-relayout ; ` +
 	`set-option -t #{window_id} @ytta_sidebar_window #{window_id} ; ` +
 	`set-option -w -F -t #{@ytta_sidebar_window} @ytta_layout_left "##{window_layout}"`
+
+// followHook runs @ytta_follow without leaving the command queue. tmux has
+// no command that expands formats into a command list and runs it at once:
+// run-shell -C does it on the next turn of the event loop, and the client is
+// redrawn in between, so a switch drew the window without the sidebar, then
+// with it, then with its layout restored. A command alias is looked up when
+// a command string is parsed, and if-shell -F parses its string when it runs,
+// so set-option -F writes the expanded commands into an alias and if-shell
+// runs them in the same turn. The whole switch is one redraw.
+const (
+	followAlias   = "command-alias[778]"
+	relayoutAlias = "command-alias[779]"
+	followHook    = `if-shell -F "#{&&:#{@ytta_sidebar_pane},#{!=:#{@ytta_sidebar_window},#{window_id}}}" ` +
+		`{ set-option -s -F ` + followAlias + ` "ytta-follow=#{E:@ytta_follow}" ; if-shell -F 1 ytta-follow }`
+)
 
 // sidebarMisplaced is true, in a window's context, unless its sidebar is the
 // full-height left column. Edge flags, not heights: see sidebarPin.
@@ -126,7 +142,7 @@ func runTmuxInit(_ []string) error {
 	version, verr := c.Run("display-message", "-p", "#{version}")
 	version = "tmux " + strings.TrimSpace(version)
 	if verr == nil && !tmuxAtLeast(version, 3, 2) {
-		// display-popup and run-shell -C, which the sidebar follow uses, arrived in 3.2.
+		// display-popup and run-shell -C, which the sidebar toggle uses, arrived in 3.2.
 		return fmt.Errorf("ytta needs tmux 3.2 or newer, this server is %s", version)
 	}
 	popup := []string{"display-popup", "-E", "-w", "90%", "-h", "70%"}
@@ -188,15 +204,12 @@ func runTmuxInit(_ []string) error {
 	// Leaving a busy agent is when a silent Esc or denial just happened there.
 	cmds = append(cmds, []string{"set-hook", "-g", "pane-focus-out" + hookIndex,
 		`if-shell -F "#{||:#{==:#{@ytta_state},running},#{==:#{@ytta_state},waiting}}" "run-shell -b '` + bin + ` reconcile #{pane_id}'"`})
-	// The sidebar follows window switches entirely inside tmux: run-shell -C
-	// expands the formats and runs the result as one tmux command list, so a
-	// switch starts no process, and the join and the layout restore land in
-	// the same redraw. See sidebarFollowCommands.
+	// The sidebar follows window switches entirely inside tmux, so a switch
+	// starts no process, and the join and the layout restore land in the
+	// same redraw. See sidebarFollowCommands and followHook.
 	cmds = append(cmds,
 		[]string{"set-option", "-g", "@ytta_follow", sidebarFollowCommands},
-		[]string{"set-hook", "-g", "session-window-changed[78]",
-			`if-shell -F "#{&&:#{@ytta_sidebar_pane},#{!=:#{@ytta_sidebar_window},#{window_id}}}" ` +
-				`{ run-shell -C "#{E:@ytta_follow}" }`})
+		[]string{"set-hook", "-g", "session-window-changed[78]", followHook})
 	// Swaps, rotations and layout changes move the sidebar like any pane;
 	// it pins itself back. The condition runs in tmux, so only a misplaced
 	// sidebar in its own window starts anything.

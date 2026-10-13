@@ -374,6 +374,36 @@ func TestSidebarFollowKeepsPaneWidths(t *testing.T) {
 	}
 }
 
+// The follow must land in the turn of tmux's event loop that switched
+// windows: the client is redrawn between turns, so a later follow shows the
+// window without the sidebar first, and then again with its layout restored.
+// run-shell -C runs its commands at the start of the next turn, which makes it
+// the probe: by then the sidebar is in place and the layout is final.
+func TestSidebarFollowLandsWithTheSwitch(t *testing.T) {
+	h := newHarness(t)
+	a := h.agent("alpha")
+	h.hook(a, "UserPromptSubmit", "")
+	sess, w1 := h.opt("alpha", "session_id"), h.opt("alpha", "window_id")
+	w2 := h.tmux("new-window", "-d", "-t", "alpha", "-P", "-F", "#{window_id}", "sleep 100000")
+	h.tmux("split-window", "-d", "-h", "-t", w2, "sleep 100000")
+	h.ytta("", "sidebar", "toggle", "--session", sess, "--window", w1)
+	sb := h.tmux("show-options", "-qv", "-t", "alpha", "@ytta_sidebar_pane")
+
+	state := "#{window_id} #{pane_at_left} #{window_layout}"
+	for _, w := range []string{w2, w1, w2, w1} {
+		h.tmux("select-window", "-t", w, ";",
+			"run-shell", "-C", `set-option -g -F -t `+sb+` @probe "`+strings.ReplaceAll(state, "#", "##")+`"`)
+		got := h.tmux("show-options", "-gqv", "@probe")
+		if !strings.HasPrefix(got, w+" 1 ") {
+			t.Fatalf("switching to %s left the sidebar at %q", w, got)
+		}
+		time.Sleep(100 * time.Millisecond)
+		if settled := h.tmux("display-message", "-p", "-t", sb, state); settled != got {
+			t.Fatalf("the layout of %s changed after the switch:\n got %q\nthen %q", w, got, settled)
+		}
+	}
+}
+
 // An agent that was idle when ytta was installed has fired no hook, yet
 // must be listed.
 func TestAgentsWithoutHooksAreDiscovered(t *testing.T) {
