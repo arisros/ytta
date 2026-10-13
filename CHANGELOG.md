@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/arisros/ytta/compare/v0.5.2...v0.5.3) (2026-10-13)
+
+
+### Fixed
+
+* **sidebar:** follow a window switch in one redraw ([#30](https://github.com/arisros/ytta/issues/30)) ([c073635](https://github.com/arisros/ytta/commit/c073635ebedece0623e22bd99d36a251afb0f33c))
+
 ## [0.5.2](https://github.com/arisros/ytta/compare/v0.5.1...v0.5.2) (2026-10-13)
 
 
