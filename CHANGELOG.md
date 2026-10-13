@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/arisros/ytta/compare/v0.5.1...v0.5.2) (2026-10-13)
+
+
+### Fixed
+
+* **sidebar:** restore pane layout on tmux 3.8 ([#31](https://github.com/arisros/ytta/issues/31)) ([20b6f34](https://github.com/arisros/ytta/commit/20b6f344fe0290e62e520f9defb802f23a2d207e))
+
 ## [0.5.1](https://github.com/arisros/ytta/compare/v0.5.0...v0.5.1) (2026-10-09)
 
 
