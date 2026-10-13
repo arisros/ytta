@@ -66,6 +66,8 @@ func windowIconFormat(running string) string {
 // puts the pane in that list changed in tmux 3.7. The swap makes the sidebar
 // first on every version, and the layout applied after it puts every pane
 // back in its cell: the saved one, or the one the join just produced.
+// The layout is single quoted: tmux 3.8 writes it as JSON, and double quotes
+// would eat the quotes inside it.
 const sidebarFollowCommands = `set-option -w -t #{window_id} @ytta_restore ` +
 	`"#{&&:#{@ytta_layout_with},#{==:#{window_layout},#{@ytta_layout_left}}}" ; ` +
 	`set-option -w -F -t #{@ytta_sidebar_pane} @ytta_layout_with ` +
@@ -73,8 +75,8 @@ const sidebarFollowCommands = `set-option -w -t #{window_id} @ytta_restore ` +
 	`join-pane -d -f -h -b -l #{@ytta-sidebar-width} -s #{@ytta_sidebar_pane} -t #{window_id}.#{pane-base-index} ; ` +
 	`set-option -w -F -t #{window_id} @ytta_layout_joined "##{window_layout}" ; ` +
 	`swap-pane -s #{@ytta_sidebar_pane} -t #{window_id}.#{pane-base-index} ; ` +
-	`set-option -s -F -t #{window_id} ` + relayoutAlias + ` 'ytta-relayout=select-layout -t #{window_id} ` +
-	`"##{?##{@ytta_restore},##{@ytta_layout_with},##{@ytta_layout_joined}}"' ; ` +
+	`set-option -s -F -t #{window_id} ` + relayoutAlias + ` "ytta-relayout=select-layout -t #{window_id} ` +
+	`'##{?##{@ytta_restore},##{@ytta_layout_with},##{@ytta_layout_joined}}'" ; ` +
 	`if-shell -F 1 ytta-relayout ; ` +
 	`set-option -t #{window_id} @ytta_sidebar_window #{window_id} ; ` +
 	`set-option -w -F -t #{@ytta_sidebar_window} @ytta_layout_left "##{window_layout}"`
