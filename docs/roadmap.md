@@ -32,7 +32,7 @@ What ytta set out to do, what is done, and what it will not become. The order wa
 | 4 | tmux 3.2 | the suite passed on 3.2a once the popup's border style and title were dropped there, so 3.2 is the floor; a statusLine of your own can be wrapped |
 | 5 | Codex | the agent boundary in `internal/agent`; Codex's hooks, its Interrupt event, its dialogs |
 | 6 | Preview and answer | the selected agent's screen in the popup; send a prompt, answer a dialog, interrupt, mark seen; `ytta send`, `ytta interrupt` |
-| 7 | Order, filter, context | longest wait first; `field:word` filters; the attention toggle; the git branch without a `git` process; consistent JSON |
+| 7 | Order, filter, context | latest change first within a state; `field:word` filters; the attention toggle; the git branch without a `git` process; consistent JSON |
 | 8 | Gemini CLI and opencode | Gemini through its hooks, opencode through a plugin file run under test with node |
 | 9 | Scripting | `ytta events --follow` and `ytta wait`, both asleep in `tmux wait-for` between events |
 | 10 | Positioning | the tagline, the compatibility table and the agent guide in [CONTRIBUTING.md](../CONTRIBUTING.md) |
@@ -46,7 +46,7 @@ What ytta set out to do, what is done, and what it will not become. The order wa
 | What a denied approval looks like in Codex | no hook was found for it, and its screen has no end marker ytta has seen, so the agent may show as running until the next prompt |
 | Whether Gemini CLI's hooks see `TMUX_PANE` | its environment redaction may hide it; without it ytta cannot tell which pane the agent is in |
 | Claude Code fixtures for resume, compaction, a crash, a failed tool, an elicitation | they need real sessions to record |
-| `sort:` terms in the filter | the order is fixed: urgency, then longest wait |
+| `sort:` terms in the filter | the order is fixed: urgency, then the latest change |
 | Sending a prompt into a live agent | tested against a stand-in that echoes its input; the paste followed by Enter has not been watched in each real agent |
 
 ## What each agent reports

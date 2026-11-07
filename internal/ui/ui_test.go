@@ -562,13 +562,12 @@ func TestInterruptNeedsConfirmationAndSeenNeedsDone(t *testing.T) {
 	}
 }
 
-func TestLongestWaitComesFirst(t *testing.T) {
+func TestLatestChangeComesFirst(t *testing.T) {
 	rows := Agents([]tmux.Pane{
 		pane("%1", "a", "1", "waiting", "2.1.284", "✳ asked just now", 9_990),
 		pane("%2", "z", "9", "waiting", "2.1.284", "✳ asked long ago", 9_000),
 		pane("%3", "a", "2", "done", "2.1.284", "✳ finished recently", 9_950),
 		pane("%4", "b", "1", "done", "2.1.284", "✳ finished first", 9_100),
-		// Working agents keep their place: session, then window.
 		pane("%5", "b", "1", "running", "2.1.284", "✳ started first", 9_000),
 		pane("%6", "a", "3", "running", "2.1.284", "✳ started later", 9_900),
 	}, now)
@@ -576,8 +575,18 @@ func TestLongestWaitComesFirst(t *testing.T) {
 	for _, r := range rows {
 		ids = append(ids, r.ID)
 	}
-	if got := strings.Join(ids, ","); got != "%2,%1,%4,%3,%6,%5" {
+	if got := strings.Join(ids, ","); got != "%1,%2,%3,%4,%6,%5" {
 		t.Errorf("order = %s", got)
+	}
+}
+
+func TestAgentsWithoutATimestampKeepPaneOrder(t *testing.T) {
+	rows := Agents([]tmux.Pane{
+		pane("%1", "b", "1", "running", "2.1.284", "✳ no since", 0),
+		pane("%2", "a", "2", "running", "2.1.284", "✳ no since either", 0),
+	}, now)
+	if rows[0].ID != "%2" || rows[1].ID != "%1" {
+		t.Errorf("order = %s,%s, want session then window", rows[0].ID, rows[1].ID)
 	}
 }
 

@@ -150,7 +150,7 @@ The screen is only trusted for Claude's explicit markers (its dialogs, the spinn
 | `x` then `y` | kill the agent's pane | kill the agent's pane |
 | `q`, Esc | close | close the sidebar |
 
-A filter is words that must all match somewhere in the row, or `field:word` for one field: `state:waiting`, `reason:permission`, `agent:codex`, `session:work`, `branch:feat`, `path:`, `name:`, `window:`, `pane:`. Among waiting and done agents the one kept waiting longest comes first. The branch is read from the repository's own files, so no `git` process runs.
+A filter is words that must all match somewhere in the row, or `field:word` for one field: `state:waiting`, `reason:permission`, `agent:codex`, `session:work`, `branch:feat`, `path:`, `name:`, `window:`, `pane:`. Within a state the agent that changed last comes first. The branch is read from the repository's own files, so no `git` process runs.
 
 `ytta list --json --filter 'state:waiting'` prints the same rows for scripts: `pane`, `target`, `state`, `reason`, `agent`, `name`, `path`, `branch`, `session_id`, `started_at`, `age_seconds` and `usage`.
 
