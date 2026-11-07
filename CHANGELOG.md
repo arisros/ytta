@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/arisros/ytta/compare/v0.5.3...v0.6.0) (2026-11-07)
+
+
+### Added
+
+* **ui:** order each state group by the latest change first ([#38](https://github.com/arisros/ytta/issues/38)) ([5176d1f](https://github.com/arisros/ytta/commit/5176d1f53d0a753a201e40587c536be3cea7c713))
+
 ## [0.5.3](https://github.com/arisros/ytta/compare/v0.5.2...v0.5.3) (2026-10-13)
 
 
