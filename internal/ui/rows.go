@@ -169,7 +169,7 @@ func (r Row) Target() string { return r.Session + ":" + r.Window + "." + r.Index
 var priority = map[string]int{machine.Waiting: 0, machine.Done: 1, machine.Running: 2, machine.Idle: 3}
 
 // Agents keeps the panes that run a live agent ytta knows about, most
-// urgent first, and within waiting and done the longest wait first. A pane whose agent died keeps its options until a view sweeps
+// urgent first, and within a state the most recent change first. A pane whose agent died keeps its options until a view sweeps
 // it, so the liveness check is what hides it.
 func Agents(panes []tmux.Pane, now time.Time) []Row {
 	var rows []Row
@@ -188,11 +188,10 @@ func Agents(panes []tmux.Pane, now time.Time) []Row {
 		if priority[a.State] != priority[b.State] {
 			return priority[a.State] < priority[b.State]
 		}
-		// Among the agents that need the user, the one kept waiting longest
-		// comes first. The others keep their place, so the list does not
-		// reshuffle while they work.
-		if (a.State == machine.Waiting || a.State == machine.Done) && a.Since != b.Since && a.Since > 0 && b.Since > 0 {
-			return a.Since < b.Since
+		// Since only moves on a transition, so a group does not reshuffle
+		// between refreshes.
+		if a.Since != b.Since && a.Since > 0 && b.Since > 0 {
+			return a.Since > b.Since
 		}
 		if a.Session != b.Session {
 			return a.Session < b.Session
