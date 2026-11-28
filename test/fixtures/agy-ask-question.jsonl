@@ -1,0 +1,6 @@
+{"dt":0,"event":"SessionStart"}
+{"dt":17,"event":"PreInvocation"}
+{"dt":9985,"event":"PreToolUse","tool":"ask_question"}
+{"dt":11573,"event":"PostToolUse","tool":"ask_question"}
+{"dt":11590,"event":"PreInvocation"}
+{"dt":14535,"event":"Stop","termination_reason":"NO_TOOL_CALL","fully_idle":true}

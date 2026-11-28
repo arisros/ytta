@@ -23,30 +23,41 @@ import (
 
 // Entry is one redacted hook event.
 type Entry struct {
-	TS               int64    `json:"ts"`
-	Event            string   `json:"event"`
-	Session          string   `json:"session,omitempty"`
-	Pane             string   `json:"pane,omitempty"`
-	NotificationType string   `json:"notification_type,omitempty"`
-	Tool             string   `json:"tool,omitempty"`
-	Source           string   `json:"source,omitempty"`
-	Reason           string   `json:"reason,omitempty"`
-	AgentType        string   `json:"agent_type,omitempty"`
-	StopHookActive   *bool    `json:"stop_hook_active,omitempty"`
-	BackgroundTasks  *int     `json:"background_tasks,omitempty"`
-	SessionCrons     *int     `json:"session_crons,omitempty"`
-	Keys             []string `json:"keys"`
+	TS                int64    `json:"ts"`
+	Event             string   `json:"event"`
+	Session           string   `json:"session,omitempty"`
+	Pane              string   `json:"pane,omitempty"`
+	NotificationType  string   `json:"notification_type,omitempty"`
+	Tool              string   `json:"tool,omitempty"`
+	Source            string   `json:"source,omitempty"`
+	Reason            string   `json:"reason,omitempty"`
+	AgentType         string   `json:"agent_type,omitempty"`
+	StopHookActive    *bool    `json:"stop_hook_active,omitempty"`
+	BackgroundTasks   *int     `json:"background_tasks,omitempty"`
+	SessionCrons      *int     `json:"session_crons,omitempty"`
+	TerminationReason string   `json:"termination_reason,omitempty"`
+	FullyIdle         *bool    `json:"fully_idle,omitempty"`
+	Keys              []string `json:"keys"`
 }
 
 type payload struct {
 	HookEventName    string `json:"hook_event_name"`
+	HookEventCamel   string `json:"hookEventName"`
 	SessionID        string `json:"session_id"`
+	SessionCamel     string `json:"sessionId"`
+	ConversationID   string `json:"conversationId"`
 	NotificationType string `json:"notification_type"`
 	ToolName         string `json:"tool_name"`
-	Source           string `json:"source"`
-	Reason           string `json:"reason"`
-	AgentType        string `json:"agent_type"`
-	StopHookActive   *bool  `json:"stop_hook_active"`
+	ToolNameCamel    string `json:"toolName"`
+	ToolCall         struct {
+		Name string `json:"name"`
+	} `json:"toolCall"`
+	Source            string `json:"source"`
+	Reason            string `json:"reason"`
+	AgentType         string `json:"agent_type"`
+	StopHookActive    *bool  `json:"stop_hook_active"`
+	TerminationReason string `json:"terminationReason"`
+	FullyIdle         *bool  `json:"fullyIdle"`
 }
 
 // FromHook reads a hook payload and returns its redacted entry. Keys lists the
@@ -71,21 +82,36 @@ func FromHook(r io.Reader, pane string, now time.Time) (Entry, error) {
 	}
 	sort.Strings(keys)
 
+	event := firstNonEmpty(p.HookEventName, p.HookEventCamel)
+	session := firstNonEmpty(p.SessionID, p.SessionCamel, p.ConversationID)
+	tool := firstNonEmpty(p.ToolName, p.ToolNameCamel, p.ToolCall.Name)
+
 	return Entry{
-		TS:               now.UnixMilli(),
-		Event:            p.HookEventName,
-		Session:          shortHash(p.SessionID),
-		Pane:             pane,
-		NotificationType: p.NotificationType,
-		Tool:             hook.ToolClass(p.ToolName),
-		Source:           p.Source,
-		Reason:           p.Reason,
-		AgentType:        p.AgentType,
-		StopHookActive:   p.StopHookActive,
-		BackgroundTasks:  hook.CountPtr(fields["background_tasks"]),
-		SessionCrons:     hook.CountPtr(fields["session_crons"]),
-		Keys:             keys,
+		TS:                now.UnixMilli(),
+		Event:             event,
+		Session:           shortHash(session),
+		Pane:              pane,
+		NotificationType:  p.NotificationType,
+		Tool:              hook.ToolClass(tool),
+		Source:            p.Source,
+		Reason:            p.Reason,
+		AgentType:         p.AgentType,
+		StopHookActive:    p.StopHookActive,
+		BackgroundTasks:   hook.CountPtr(fields["background_tasks"]),
+		SessionCrons:      hook.CountPtr(fields["session_crons"]),
+		TerminationReason: p.TerminationReason,
+		FullyIdle:         p.FullyIdle,
+		Keys:              keys,
 	}, nil
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // Append writes the entry as one JSON line to a dated file under dir. A single

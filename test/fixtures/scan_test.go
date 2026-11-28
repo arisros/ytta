@@ -13,7 +13,7 @@ import (
 var forbidden = append([]*regexp.Regexp{
 	regexp.MustCompile(`/Users/|/home/|/root/|/tmp/|/private/|/var/folders/|[A-Za-z]:\\`),
 	regexp.MustCompile(`[\w.+-]+@[\w-]+\.[\w.]+`),
-	regexp.MustCompile(`"(prompt|tool_input|cwd|transcript_path|message|title)"\s*:`),
+	regexp.MustCompile(`"(prompt|tool_input|cwd|transcript_path|message|title|lastUserInput|workspacePaths|transcriptPath|artifactDirectoryPath)"\s*:`),
 	regexp.MustCompile(`\b[A-Z][A-Z0-9]+-\d+\b`),                                       // ticket keys such as BL-1234
 	regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`), // raw session ids
 	regexp.MustCompile(`(?i)\b[\w-]+\.(local|lan|internal|corp)\b`),                    // hostnames

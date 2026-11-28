@@ -66,6 +66,21 @@ func TestDecodeReadsCamelCaseFields(t *testing.T) {
 	if p.Event != "Stop" || p.SessionID != "s2" {
 		t.Errorf("snake_case must win, got %+v", p)
 	}
+	// Antigravity CLI uses conversationId, nested toolCall.name, terminationReason and fullyIdle.
+	p, err = Decode(strings.NewReader(`{"hookEventName":"PreToolUse","conversationId":"c1","toolCall":{"id":"call_1","name":"ask_user_question","args":{"secret":"x"}},"lastUserInput":"private"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Event != "PreToolUse" || p.SessionID != "c1" || p.ToolName != "ask_user_question" {
+		t.Errorf("agy PreToolUse got %+v", p)
+	}
+	p, err = Decode(strings.NewReader(`{"hookEventName":"Stop","conversationId":"c1","terminationReason":"USER_CANCELED","fullyIdle":false}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.TerminationReason != "USER_CANCELED" || p.FullyIdle == nil || *p.FullyIdle {
+		t.Errorf("agy Stop got %+v", p)
+	}
 }
 
 func TestDecodeRejectsGarbage(t *testing.T) {

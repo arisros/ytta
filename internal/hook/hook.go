@@ -21,26 +21,33 @@ import (
 // Payload holds the fields ytta reads. Everything else in the hook input,
 // including prompts and tool arguments, is never decoded into memory we keep.
 type Payload struct {
-	Event            string          `json:"hook_event_name"`
-	SessionID        string          `json:"session_id"`
-	NotificationType string          `json:"notification_type"`
-	ToolName         string          `json:"tool_name"`
-	AgentID          string          `json:"agent_id"`
-	Source           string          `json:"source"`
-	BackgroundTasks  json.RawMessage `json:"background_tasks"`
+	Event             string          `json:"hook_event_name"`
+	SessionID         string          `json:"session_id"`
+	NotificationType  string          `json:"notification_type"`
+	ToolName          string          `json:"tool_name"`
+	AgentID           string          `json:"agent_id"`
+	Source            string          `json:"source"`
+	BackgroundTasks   json.RawMessage `json:"background_tasks"`
+	TerminationReason string          `json:"terminationReason"`
+	FullyIdle         *bool           `json:"fullyIdle"`
 	// Agent names the agent that sent the payload. It comes from the hook
 	// command line (ytta hook --agent), never from the payload.
 	Agent string `json:"-"`
 }
 
 // Decode reads one payload. Agents that spell the event, session and tool
-// fields in camelCase are read into the same three fields.
+// fields in camelCase, or nest the tool name under toolCall.name, are read
+// into the same three fields.
 func Decode(r io.Reader) (Payload, error) {
 	var w struct {
 		Payload
-		Event     string `json:"hookEventName"`
-		SessionID string `json:"sessionId"`
-		ToolName  string `json:"toolName"`
+		Event          string `json:"hookEventName"`
+		SessionID      string `json:"sessionId"`
+		ConversationID string `json:"conversationId"`
+		ToolName       string `json:"toolName"`
+		ToolCall       struct {
+			Name string `json:"name"`
+		} `json:"toolCall"`
 	}
 	if err := json.NewDecoder(r).Decode(&w); err != nil {
 		return Payload{}, fmt.Errorf("decode hook payload: %w", err)
@@ -52,8 +59,14 @@ func Decode(r io.Reader) (Payload, error) {
 	if p.SessionID == "" {
 		p.SessionID = w.SessionID
 	}
+	if p.SessionID == "" {
+		p.SessionID = w.ConversationID
+	}
 	if p.ToolName == "" {
 		p.ToolName = w.ToolName
+	}
+	if p.ToolName == "" {
+		p.ToolName = w.ToolCall.Name
 	}
 	return p, nil
 }

@@ -16,5 +16,6 @@ jq -c --arg p "$pane" --argjson lo "$lo" --argjson hi "$hi" '
   jq -sc 'if length == 0 then empty else (.[0].ts) as $t0 | .[] | {
       dt: (.ts - $t0), event,
       notification_type, tool, agent_type, source, reason, background_tasks,
+      termination_reason, fully_idle,
       subagent: ((.keys // []) | index("agent_id") != null)
-    } | with_entries(select(.value != null and .value != false)) end'
+    } | with_entries(select(.value != null and (.key == "fully_idle" or .value != false))) end'
