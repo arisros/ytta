@@ -5,7 +5,7 @@
   </picture>
 </h1>
 
-<p align="center"><b>your tmux terminal agent 😉</b>. An agent control plane for tmux: see which coding agents need you and why, answer them from where you are, and script them. Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Droid, Qwen Code, Kilo Code, Pi, Kimi Code and Hermes Agent, across every session.</p>
+<p align="center"><b>your tmux terminal agent 😉</b>. An agent control plane for tmux: see which coding agents need you and why, answer them from where you are, and script them. Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Droid, Qwen Code, Kilo Code, Pi, Kimi Code, Hermes Agent and Antigravity CLI, across every session.</p>
 
 <p align="center">
   <a href="https://github.com/arisros/ytta/actions/workflows/ci.yml"><img src="https://github.com/arisros/ytta/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -185,8 +185,9 @@ The sidebar keeps its place as the full-height left column: it follows you to ot
 | Pi | `ytta install --pi --apply`, then `/reload` in it | prompts, tools, the end of a turn, a closed or switched session | nothing | no |
 | Kimi Code CLI | `ytta install --kimi --apply`, then restart it | prompts, tools, permission requests and their answers, Esc, the end of a turn and one an error ended, a closed session | nothing | no |
 | Hermes Agent | `ytta install --hermes --apply`, then restart it and accept the hooks | turns, tools, approval requests and their answers, the end of a turn (interrupted or not), a closed session | nothing | no |
+| Antigravity CLI (`agy`) | `ytta install --agy --apply`, then start or restart `agy` | turns, tools, `ask_question` prompts, background tasks (`fullyIdle`), the end of a turn | approval and trust dialogs, and Esc (`Interrupted`) | no |
 
-Only Claude Code's transitions are replayed from recorded sessions. The others are built from each project's published hook or plugin interface and tested against that, so treat them as experimental until recordings exist:
+Claude Code's and Antigravity CLI's transitions are replayed from recorded sessions. The others are built from each project's published hook or plugin interface and tested against that, so treat them as experimental until recordings exist:
 
 - **Codex**: a denied approval may show as running until your next prompt.
 - **Gemini CLI**: its hooks may not see `TMUX_PANE` when its environment redaction is on; allow that variable in its settings if no agent shows up.
@@ -197,6 +198,7 @@ Only Claude Code's transitions are replayed from recorded sessions. The others a
 - **Pi**: ytta writes an extension file into `~/.pi/agent/extensions/`. Pi asks no permissions, so it never shows as waiting; a prompt an extension of yours puts up is not reported.
 - **Kimi Code CLI**: ytta appends its `[[hooks]]` tables to `~/.kimi-code/config.toml` between two comment lines, and removes exactly those. A config that defines `hooks` as an inline array is refused.
 - **Hermes Agent**: ytta appends a `hooks:` key to `~/.hermes/config.yaml` between two comment lines. A config that already has one is refused, with the line to add by hand. Hermes asks for consent once per hook.
+- **Antigravity CLI (`agy`)**: ytta writes its own `"ytta"` named entry into `~/.gemini/config/hooks.json`, beside any other hooks of yours. `ask_question` reports waiting immediately via `PreToolUse`; command/permission prompts have no dedicated hook in `agy` yet and are picked up from the screen on reconcile and view refresh. Esc mid-turn fires no `Stop` hook in `agy` 1.5.18 and is cleared from the `Interrupted` marker on screen. Closing `agy` sends no event; the agent is forgotten when its pane changes.
 - **Continue CLI**: `cn` reads Claude Code's settings, so the hooks `ytta install --claude` wrote already report it, shown as Claude. It has no install target of its own, which would fire every event twice.
 - **opencode**: ytta writes a plugin file into `~/.config/opencode/plugins/` that runs `ytta hook` for each event. It reports an opencode started in a tmux pane, not one reached with `opencode attach`. Closing opencode sends no event; the agent is forgotten when its pane changes.
 

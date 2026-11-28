@@ -1344,3 +1344,65 @@ func TestPinTooSoonIsDeferredNotDropped(t *testing.T) {
 	}
 	h.eventually(pinned, "the deferred pin to put the sidebar back")
 }
+
+func TestAgyAgent(t *testing.T) {
+	h := newHarness(t)
+	a := h.tmux("split-window", "-d", "-t", "alpha", "-P", "-F", "#{pane_id}", "sleep 100000")
+	h.eventually(func() bool { return h.opt(a, "pane_current_command") == "sleep" }, "agy stand-in running")
+	send := func(payload string) {
+		t.Helper()
+		cmd := exec.Command(h.bin, "hook", "--agent", "agy")
+		cmd.Env = h.env(a)
+		cmd.Stdin = strings.NewReader(payload)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("ytta hook --agent agy failed: %v\n%s", err, out)
+		}
+	}
+	steps := []struct{ payload, state string }{
+		{`{"hookEventName":"SessionStart","conversationId":"agy-1","lastUserInput":"secret prompt"}`, "idle"},
+		{`{"hookEventName":"PreInvocation","conversationId":"agy-1","invocationNum":0}`, "running"},
+		{`{"hookEventName":"PreToolUse","conversationId":"agy-1","toolCall":{"name":"run_command","args":{"CommandLine":"secret-cmd"}}}`, "running"},
+		{`{"hookEventName":"PostToolUse","conversationId":"agy-1","toolCall":{"name":"run_command"}}`, "running"},
+		{`{"hookEventName":"PreToolUse","conversationId":"agy-1","toolCall":{"name":"ask_question"}}`, "waiting"},
+		{`{"hookEventName":"PostToolUse","conversationId":"agy-1","toolCall":{"name":"ask_question"}}`, "running"},
+		{`{"hookEventName":"Stop","conversationId":"agy-1","terminationReason":"NO_TOOL_CALL","fullyIdle":false}`, "running"},
+		{`{"hookEventName":"Stop","conversationId":"agy-1","terminationReason":"NO_TOOL_CALL","fullyIdle":true}`, "done"},
+		{`{"hookEventName":"PreInvocation","conversationId":"agy-1","invocationNum":0}`, "running"},
+		{`{"hookEventName":"Stop","conversationId":"agy-1","terminationReason":"USER_CANCELED","fullyIdle":true}`, "idle"},
+	}
+	for _, s := range steps {
+		send(s.payload)
+		if got := h.opt(a, "@ytta_state"); got != s.state {
+			t.Fatalf("after %s: state %q, want %q", s.payload, got, s.state)
+		}
+	}
+	if out := h.ytta("", "list"); !strings.Contains(out, "agy · ") {
+		t.Errorf("list does not show the agy agent:\n%s", out)
+	}
+	if out := h.ytta("", "events", "--json"); strings.Contains(out, "secret prompt") || strings.Contains(out, "secret-cmd") {
+		t.Errorf("private payload fields leaked into event log:\n%s", out)
+	}
+}
+
+func TestAgyInstallOwnsOnlyItsEntry(t *testing.T) {
+	h := newHarness(t)
+	hooksFile := filepath.Join(t.TempDir(), "hooks.json")
+	original := "{\n  \"lint-checker\": {\n    \"PostToolUse\": [\n      {\n        \"matcher\": \"run_command\",\n        \"hooks\": [\n          {\n            \"type\": \"command\",\n            \"command\": \"echo a && echo b\"\n          }\n        ]\n      }\n    ]\n  }\n}\n"
+	if err := os.WriteFile(hooksFile, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.ytta("", "install", "--agy", "--apply", "--settings", hooksFile)
+	b, _ := os.ReadFile(hooksFile)
+	for _, want := range []string{`"lint-checker"`, `"ytta"`, `"SessionStart"`, `"PreInvocation"`, `"PreToolUse"`, `"PostToolUse"`, `"Stop"`, `"matcher": "*"`, "hook --agent agy", "echo a && echo b"} {
+		if !strings.Contains(string(b), want) {
+			t.Errorf("hooks.json lacks %q:\n%s", want, b)
+		}
+	}
+	if strings.Contains(string(b), `\u0026`) {
+		t.Errorf("&& was escaped:\n%s", b)
+	}
+	h.ytta("", "uninstall", "--agy", "--apply", "--settings", hooksFile)
+	if b, _ := os.ReadFile(hooksFile); string(b) != original {
+		t.Errorf("uninstall did not restore the file:\n%s", b)
+	}
+}

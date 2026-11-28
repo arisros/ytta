@@ -128,6 +128,21 @@ func runDoctor(_ []string) error {
 			}
 			continue
 		}
+		if t.named {
+			if events, _ := install.NamedOwned(file, install.Marker); len(events) > 0 {
+				cmds, _ := install.NamedCommands(file, install.Marker)
+				gone := goneCommandBinaries(cmds)
+				switch {
+				case strings.Contains(string(file), "hook --record"):
+					check(false, t.title+" hooks", "recorder installed; run ytta install --"+t.name+" --apply for the live hooks")
+				case len(gone) > 0:
+					check(false, t.title+" hooks", "they call "+strings.Join(gone, ", ")+", which is gone; run ytta install --"+t.name+" --apply")
+				default:
+					check(true, t.title+" hooks", strconv.Itoa(len(events))+" events")
+				}
+			}
+			continue
+		}
 		if events, _ := install.Owned(file); len(events) > 0 {
 			detail := strconv.Itoa(len(events)) + " events"
 			if t.doctorNote != "" {
@@ -186,6 +201,10 @@ func goneBinaries(settings []byte) []string {
 		strings.Contains(parsed.StatusLine.Command, install.Marker) {
 		commands = append(commands, parsed.StatusLine.Command)
 	}
+	return goneCommandBinaries(commands)
+}
+
+func goneCommandBinaries(commands []string) []string {
 	var gone []string
 	for _, c := range commands {
 		bin := guardedBinary(c)

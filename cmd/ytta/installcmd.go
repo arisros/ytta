@@ -68,6 +68,10 @@ func runInstall(args []string, add bool) error {
 		if after, err = installBlock(t, before, add, *rec); err != nil {
 			return err
 		}
+	} else if t.named {
+		if after, err = installNamed(t, before, add, *rec); err != nil {
+			return err
+		}
 	} else if add {
 		bin, err := selfPath()
 		if err != nil {
@@ -123,6 +127,11 @@ func runInstall(args []string, add bool) error {
 		fmt.Println("\nPreview only. Repeat with --apply to save.")
 		return nil
 	}
+	if add {
+		if err := os.MkdirAll(filepath.Dir(*path), 0o755); err != nil {
+			return err
+		}
+	}
 	backup, err := writeWithBackup(*path, before, after)
 	if err != nil {
 		return err
@@ -157,8 +166,34 @@ type target struct {
 	// of the agent's TOML or YAML config. rest is the file without that
 	// block, and args is what the binary is called with.
 	block func(rest, bin, args string) (string, error)
+	// named, when true, installs under a top-level named hook key in the
+	// agent's hooks.json (as Antigravity CLI uses).
+	named      bool
+	flatEvents []string
+	toolEvents []string
 	// binary finds the ytta path a plugin file calls, for `ytta doctor`.
 	binary func(file string) string
+}
+
+// installNamed adds or removes a top-level named hook entry (Antigravity CLI's
+// hooks.json format) and returns the new file.
+func installNamed(t *target, before []byte, add, record bool) ([]byte, error) {
+	if !add {
+		if len(before) == 0 {
+			return before, nil
+		}
+		return install.RemoveNamed(before, install.Marker)
+	}
+	bin, err := selfPath()
+	if err != nil {
+		return nil, err
+	}
+	h := install.Hook{Command: guarded(bin, "hook"+t.hookArgs), Timeout: t.timeout}
+	if record {
+		fmt.Printf("Note: the recorder replaces the live hooks; run install --%s again to return to them.\n", t.name)
+		h = install.Hook{Command: guarded(bin, "hook --record"), Timeout: t.timeout}
+	}
+	return install.AddNamed(before, install.Marker, t.flatEvents, t.toolEvents, h)
 }
 
 // installBlock adds or removes a target's block and returns the new file.
@@ -333,6 +368,11 @@ var targets = []target{
 		name: "hermes", title: "Hermes Agent", path: homeFile(".hermes", "config.yaml"), hookArgs: " --agent hermes",
 		block:      hermesBlock,
 		afterApply: "Restart Hermes Agent. It asks once per hook before running it: accept each, or start it with --accept-hooks.",
+	},
+	{
+		name: "agy", title: "Antigravity CLI", path: homeFile(".gemini", "config", "hooks.json"), timeout: 5, hookArgs: " --agent agy",
+		named: true, flatEvents: agent.AgyFlatEvents, toolEvents: agent.AgyToolEvents,
+		afterApply: "Start a new Antigravity CLI session (or restart running ones) to load the hooks.",
 	},
 }
 

@@ -370,20 +370,24 @@ func TestFixtures(t *testing.T) {
 		seen    = "Screen waiting>idle screen"
 	)
 	cases := map[string]struct {
+		agent     string // "" means claude
 		hooksOnly string // state after the recorded hooks
 		screen    string // screen seen afterwards, "" for none
 		final     string
 		trace     []string // every state change, in order
 	}{
-		"permission-approve":  {machine.Done, "", machine.Done, []string{prompt, askBash, resumed, stopped}},
-		"permission-deny-esc": {machine.Waiting, screenIdle, machine.Idle, []string{prompt, askBash, seen}},
-		"permission-deny-no":  {machine.Waiting, screenIdle, machine.Idle, []string{prompt, askBash, seen}},
-		"esc-during-tool":     {machine.Waiting, screenIdle, machine.Idle, []string{prompt, askBash, seen}},
-		"esc-queued-prompt":   {machine.Done, "", machine.Done, []string{prompt, askBash, "Prompt waiting>running hook", stopped}},
-		"subagent":            {machine.Done, "", machine.Done, []string{prompt, stopped}},
-		"background-bash":     {machine.Done, "", machine.Done, []string{prompt, askBash, resumed, "IdlePrompt running>done hook"}},
-		"ask-user-question":   {machine.Done, "", machine.Done, []string{prompt, "Permission running>waiting hook question", resumed, stopped}},
-		"session-start-exit":  {"", "", "", []string{"Begin idle>idle hook", prompt, stopped, "End > hook"}},
+		"permission-approve":  {"", machine.Done, "", machine.Done, []string{prompt, askBash, resumed, stopped}},
+		"permission-deny-esc": {"", machine.Waiting, screenIdle, machine.Idle, []string{prompt, askBash, seen}},
+		"permission-deny-no":  {"", machine.Waiting, screenIdle, machine.Idle, []string{prompt, askBash, seen}},
+		"esc-during-tool":     {"", machine.Waiting, screenIdle, machine.Idle, []string{prompt, askBash, seen}},
+		"esc-queued-prompt":   {"", machine.Done, "", machine.Done, []string{prompt, askBash, "Prompt waiting>running hook", stopped}},
+		"subagent":            {"", machine.Done, "", machine.Done, []string{prompt, stopped}},
+		"background-bash":     {"", machine.Done, "", machine.Done, []string{prompt, askBash, resumed, "IdlePrompt running>done hook"}},
+		"ask-user-question":   {"", machine.Done, "", machine.Done, []string{prompt, "Permission running>waiting hook question", resumed, stopped}},
+		"session-start-exit":  {"", "", "", "", []string{"Begin idle>idle hook", prompt, stopped, "End > hook"}},
+		"agy-turn":            {"agy", machine.Done, "", machine.Done, []string{"Begin idle>idle hook", prompt, stopped}},
+		"agy-ask-question":    {"agy", machine.Done, "", machine.Done, []string{"Begin idle>idle hook", prompt, "Permission running>waiting hook question", resumed, stopped}},
+		"agy-esc":             {"agy", machine.Running, "  ⎿  Interrupted · What should Antigravity CLI do instead?\n────────────────────\n> Auto mode (shift+tab to cycle)\n────────────────────\n? for shortcuts\n", machine.Idle, []string{"Begin idle>idle hook", prompt, "Screen running>idle screen"}},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -395,7 +399,7 @@ func TestFixtures(t *testing.T) {
 					[]string{e.Kind, e.From + ">" + e.To, e.Source, strings.TrimSpace(e.Reason + " " + e.Tool)}, " ")))
 			}
 			for _, line := range readFixture(t, name) {
-				send(t, d, "%1", line)
+				sendAs(t, d, c.agent, "%1", line)
 			}
 			if got := f.state("%1"); got != c.hooksOnly {
 				t.Fatalf("after hooks: %q, want %q", got, c.hooksOnly)
@@ -539,6 +543,50 @@ func TestCodexTurn(t *testing.T) {
 	}
 }
 
+func TestAgyTurn(t *testing.T) {
+	f := newFake()
+	d := newYtta(t, f)
+	var trace []string
+	d.Emit = func(e events.Event) { trace = append(trace, e.Kind+" "+e.From+">"+e.To) }
+	agyEv := func(name, extra string) string {
+		return fmt.Sprintf(`{"hookEventName":%q,"conversationId":"a1"%s}`, name, extra)
+	}
+	steps := []struct{ event, extra, state string }{
+		{"SessionStart", "", machine.Idle},
+		{"PreInvocation", `,"invocationNum":0`, machine.Running},
+		{"PreToolUse", `,"toolCall":{"name":"run_command"}`, machine.Running},
+		{"PostToolUse", `,"toolCall":{"name":"run_command"}`, machine.Running},
+		{"PreToolUse", `,"toolCall":{"name":"ask_question"}`, machine.Waiting},
+		{"PostToolUse", `,"toolCall":{"name":"ask_question"}`, machine.Running},
+		{"Stop", `,"terminationReason":"NO_TOOL_CALL","fullyIdle":false`, machine.Running},
+		{"Stop", `,"terminationReason":"NO_TOOL_CALL","fullyIdle":true`, machine.Done},
+		{"PreInvocation", `,"invocationNum":0`, machine.Running},
+		{"Stop", `,"terminationReason":"USER_CANCELED","fullyIdle":true`, machine.Idle},
+	}
+	for _, s := range steps {
+		sendAs(t, d, "agy", "%10", agyEv(s.event, s.extra))
+		if got := f.state("%10"); got != s.state {
+			t.Fatalf("after %s: %q, want %q", s.event, got, s.state)
+		}
+	}
+	if got := f.opts["%10/@ytta_agent"]; got != "agy" {
+		t.Errorf("@ytta_agent = %q", got)
+	}
+	want := "Begin idle>idle,Prompt idle>running,Permission running>waiting,ToolEnd waiting>running,Stop running>done,Prompt done>running,Interrupt running>idle"
+	if got := strings.Join(trace, ","); got != want {
+		t.Errorf("trace:\n%s\nwant:\n%s", got, want)
+	}
+	// Approval dialog on screen moves a running agy pane to waiting.
+	sendAs(t, d, "agy", "%10", agyEv("PreInvocation", ""))
+	f.screen = "Requesting permission for:\n   echo hi\nRun this command?\n> 1. Yes, run command\n  ↑/↓ Navigate · tab Amend\nesc to cancel\n"
+	if err := d.Reconcile("%10", "a1", machine.Running); err != nil {
+		t.Fatal(err)
+	}
+	if got, why := f.state("%10"), f.opts["%10/@ytta_reason"]; got != machine.Waiting || why != "dialog" {
+		t.Errorf("agy dialog on screen: %q %q, want waiting dialog", got, why)
+	}
+}
+
 func TestNotifyCommandGetsStatePaneAndReason(t *testing.T) {
 	f := newFake()
 	d := newYtta(t, f)
@@ -596,7 +644,9 @@ func readFixture(t *testing.T, name string) []string {
 	for sc.Scan() {
 		var r struct {
 			Event, NotificationType, Source, Reason, Tool string
-			BackgroundTasks                               *int `json:"background_tasks"`
+			BackgroundTasks                               *int   `json:"background_tasks"`
+			TerminationReason                             string `json:"termination_reason"`
+			FullyIdle                                     *bool  `json:"fully_idle"`
 			Subagent                                      bool
 		}
 		if err := json.Unmarshal(sc.Bytes(), &r); err != nil {
@@ -621,6 +671,12 @@ func readFixture(t *testing.T, name string) []string {
 		}
 		if r.BackgroundTasks != nil {
 			p["background_tasks"] = make([]int, *r.BackgroundTasks)
+		}
+		if r.TerminationReason != "" {
+			p["terminationReason"] = r.TerminationReason
+		}
+		if r.FullyIdle != nil {
+			p["fullyIdle"] = *r.FullyIdle
 		}
 		b, _ := json.Marshal(p)
 		out = append(out, string(b))

@@ -68,7 +68,9 @@ setup:
                                        add the hooks to Kimi Code's config.toml
   install --hermes [--record] [--apply] [--settings FILE]
                                        add the hooks to Hermes Agent's config.yaml
-  uninstall --claude|--codex|--gemini|--opencode|--copilot|--droid|--qwen|--kilo|--pi|--kimi|--hermes
+  install --agy [--record] [--apply] [--settings FILE]
+                                       add the hooks to Antigravity CLI's hooks.json
+  uninstall --claude|--codex|--gemini|--opencode|--copilot|--droid|--qwen|--kilo|--pi|--kimi|--hermes|--agy
             [--apply] [--settings FILE]
                                        remove every ytta hook, ytta's statusLine from Claude, or the plugin
   doctor                               check the installation

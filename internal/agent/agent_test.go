@@ -9,7 +9,7 @@ import (
 )
 
 func TestFor(t *testing.T) {
-	for name, want := range map[string]string{"": "claude", "claude": "claude", "codex": "codex", "gemini": "gemini", "opencode": "opencode"} {
+	for name, want := range map[string]string{"": "claude", "claude": "claude", "codex": "codex", "gemini": "gemini", "opencode": "opencode", "agy": "agy"} {
 		if a, ok := For(name); !ok || a.Name != want {
 			t.Errorf("For(%q) = %q %v, want %q", name, a.Name, ok, want)
 		}
@@ -281,6 +281,52 @@ func TestHermesMap(t *testing.T) {
 	for _, c := range cases {
 		if action, ev := mapped(t, Hermes, c.in); action != c.action || ev != c.want {
 			t.Errorf("%s: got %v %#v, want %v %#v", c.in, action, ev, c.action, c.want)
+		}
+	}
+}
+
+func TestAgyMap(t *testing.T) {
+	cases := []struct {
+		in     string
+		action hook.Action
+		want   machine.Event
+	}{
+		{`{"hookEventName":"SessionStart","conversationId":"c1"}`, hook.Begin, nil},
+		{`{"hookEventName":"PreInvocation","conversationId":"c1","invocationNum":0}`, hook.Send, machine.Prompt{At: 7}},
+		{`{"hookEventName":"PreToolUse","conversationId":"c1","toolCall":{"name":"run_command"}}`, hook.Send, machine.ToolStart{At: 7}},
+		{`{"hookEventName":"PreToolUse","conversationId":"c1","toolCall":{"name":"ask_question"}}`, hook.Send, machine.Permission{At: 7, Reason: machine.ReasonQuestion}},
+		{`{"hookEventName":"PreToolUse","conversationId":"c1","toolCall":{"name":"ask_user_question"}}`, hook.Send, machine.Permission{At: 7, Reason: machine.ReasonQuestion}},
+		{`{"hookEventName":"PostToolUse","conversationId":"c1","toolCall":{"name":"ask_question"}}`, hook.Send, machine.ToolEnd{At: 7}},
+		{`{"hookEventName":"Stop","conversationId":"c1","terminationReason":"NO_TOOL_CALL","fullyIdle":true}`, hook.Send, machine.Stop{At: 7}},
+		{`{"hookEventName":"Stop","conversationId":"c1","terminationReason":"NO_TOOL_CALL","fullyIdle":false}`, hook.Send, machine.Stop{At: 7, Background: 1}},
+		{`{"hookEventName":"Stop","conversationId":"c1","terminationReason":"USER_CANCELED","fullyIdle":true}`, hook.Send, machine.Interrupt{At: 7}},
+		{`{"hookEventName":"PostInvocation","conversationId":"c1"}`, hook.Ignore, nil},
+	}
+	for _, c := range cases {
+		if action, ev := mapped(t, Agy, c.in); action != c.action || ev != c.want {
+			t.Errorf("%s: got %v %#v, want %v %#v", c.in, action, ev, c.action, c.want)
+		}
+	}
+	if !Agy.Detect("agy") || Agy.Detect("node") || Agy.Detect("zsh") {
+		t.Error("Detect did not match only agy")
+	}
+}
+
+// Screens captured from Antigravity CLI v1.5.18.
+func TestAgyClassify(t *testing.T) {
+	cases := map[string]string{
+		"⣾  Generating...\n> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)\nesc to cancel   auto · Gemini 4 Neon · high\n":                      machine.ScreenWorking,
+		"Requesting permission for:\n   echo perm_test\nRun this command?\n> 1. Yes, run command\n  ↑/↓ Navigate · tab Amend\nesc to cancel\n":                        machine.ScreenDialog,
+		"Question 1/1: Please pick an option:\n> 1. Option A\n  ↑/↓ Navigate · enter Select · esc Skip\nesc to cancel\n":                                              machine.ScreenDialog,
+		"Do you trust the contents of this project?\n> Yes, I trust this folder\n  ↑/↓ Navigate · enter Confirm\n":                                                    machine.ScreenDialog,
+		"  ⎿  Interrupted · What should Antigravity CLI do instead?\n────────────────────\n> Auto mode (shift+tab to cycle)\n────────────────────\n? for shortcuts\n": machine.ScreenIdle,
+		"> Auto mode: edits & safe commands auto-approved (shift+tab to cycle)\n? for shortcuts   auto · Gemini 4 Neon · high\n":                                      machine.ScreenNoDialog,
+		"$ ls\nfoo\n": "",
+		"":            "",
+	}
+	for screen, want := range cases {
+		if got := Agy.Classify(screen); got != want {
+			t.Errorf("classifyAgy(%q) = %q, want %q", screen, got, want)
 		}
 	}
 }

@@ -74,6 +74,41 @@ func TestFromHookRejectsGarbage(t *testing.T) {
 	}
 }
 
+func TestFromHookRedactsAntigravityPayload(t *testing.T) {
+	in := `{
+		"conversationId": "99693532-41db-4a78-805a-892d63977121",
+		"workspacePaths": ["/Users/someone/work/acme"],
+		"transcriptPath": "/Users/someone/.gemini/antigravity-cli/brain/x/transcript.jsonl",
+		"artifactDirectoryPath": "/Users/someone/.gemini/antigravity-cli/brain/x",
+		"cwd": "/Users/someone/work/acme",
+		"lastUserInput": "fix acme billing BL-1234",
+		"hookEventName": "PreToolUse",
+		"toolCall": {"id": "call_1", "name": "run_command", "args": {"CommandLine": "cat /etc/passwd"}}
+	}`
+	e, err := FromHook(strings.NewReader(in), "%12", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, _ := json.Marshal(e)
+	for _, leak := range []string{"99693532", "/Users", "acme", "BL-1234", "passwd", "billing"} {
+		if strings.Contains(string(out), leak) {
+			t.Errorf("entry leaks %q: %s", leak, out)
+		}
+	}
+	if e.Event != "PreToolUse" || e.Tool != "run_command" || len(e.Session) != 12 {
+		t.Errorf("unexpected entry: %+v", e)
+	}
+
+	stopIn := `{"hookEventName":"Stop","conversationId":"99693532-41db-4a78-805a-892d63977121","terminationReason":"USER_CANCELED","fullyIdle":false}`
+	e, err = FromHook(strings.NewReader(stopIn), "%12", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.TerminationReason != "USER_CANCELED" || e.FullyIdle == nil || *e.FullyIdle {
+		t.Errorf("unexpected stop entry: %+v", e)
+	}
+}
+
 func TestAppendWritesOneLinePerEntry(t *testing.T) {
 	dir := t.TempDir()
 	for _, ev := range []string{"Stop", "SessionEnd"} {

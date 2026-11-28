@@ -6,7 +6,7 @@ What ytta set out to do, what is done, and what it will not become. The order wa
 
 | Question a new user asks | Answer today |
 |---|---|
-| Does it support my agent? | Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Droid, Qwen Code, Kilo Code CLI, Pi, Kimi Code CLI and Hermes Agent. Only Claude Code's behaviour is replayed from recorded sessions |
+| Does it support my agent? | Claude Code, Codex, Gemini CLI, opencode, Copilot CLI, Droid, Qwen Code, Kilo Code CLI, Pi, Kimi Code CLI, Hermes Agent and Antigravity CLI (`agy`). Claude Code's and Antigravity CLI's behaviour are replayed from recorded sessions |
 | Does it work on my tmux? | 3.2 and newer, which covers Ubuntu 22.04 and RHEL 9. CI runs 3.2a, 3.3a and current |
 | Does it ever lie to me? | every state has a way out, endings no hook reports are read from the screen, agents that exited are cleared, and every state change is logged with its cause |
 | Does it save me a trip to the pane? | the reason an agent waits, its screen in the popup, answering and prompting from there, a notify command |
@@ -76,6 +76,7 @@ Agents added later are listed by row. Read from each project's documentation on 
 | Pi | an extension file in `~/.pi/agent/extensions/` | none: Pi has no permission prompts | does not apply | `agent_end`, if Pi sends it for an aborted turn | `session_shutdown` |
 | Kimi Code CLI | `[[hooks]]` tables in `~/.kimi-code/config.toml` | `PermissionRequest` | `PermissionResult` | `Interrupt` | `SessionEnd` |
 | Hermes Agent | shell hooks under `hooks:` in `~/.hermes/config.yaml`, run without a shell and after a consent prompt | `pre_approval_request` | `post_approval_response` | `on_session_end`, which is the end of every turn and says whether it was interrupted | `on_session_finalize` |
+| Antigravity CLI (`agy`) | named `"ytta"` hook entry in `~/.gemini/config/hooks.json`, camelCase payloads (`conversationId`, `toolCall.name`, `terminationReason`, `fullyIdle`); recorded on `agy` 1.5.18 | `PreToolUse` on `ask_question` (resolved by `PostToolUse`); permission and trust dialogs have no dedicated hook yet and are read from the screen | no event found; cleared on screen reconcile | `Stop` with `USER_CANCELED` when emitted; Esc mid-turn in 1.5.18 fires no `Stop` and prints `Interrupted`, read from the screen | none on exit; the pane's command (`agy`) changing ends it |
 
 ## Agents considered
 
